@@ -1,0 +1,288 @@
+<p>Title: WebGL 3D Perspective Correct Texture Mapping<br />Description: What's special about W<br />TOC: Perspective Correct Texture Mapping</p>
+
+<p>This post is a continuation of a series of posts about WebGL.  The first<br /><a href="webgl-fundamentals.html">started with fundamentals</a>. This article<br />covers perspective correct texture mapping. To understand it you<br />probably need to read up on <a href="webgl-3d-perspective.html">perspective projection</a> and maybe <a href="webgl-3d-textures.html">texturing</a><br />as well. You also need to know about <a href="webgl-how-it-works.html">varyings and what they do</a> but I'll cover them briefly here.</p>
+
+<p>So in the "<a href="webgl-how-it-works.html">how it works</a>" article<br />we covered how varyings work. A vertex shader can declare a<br />varying and set it to some value. Once the vertex shader has been called<br />3 times WebGL will draw a triangle. While it's drawing that triangle<br />for every pixel it will call our fragment shader and ask it what<br />color to make that pixel. Between the 3 vertices of the triangle<br />it will pass us our varyings interpolated between the 3 values.</p>
+
+<p>{{{diagram url="resources/fragment-shader-anim.html" caption="v_color is interpolated between v0, v1 and v2" }}}</p>
+
+<p>Going back to our <a href="webgl-fundamentals.html">first article</a> we drew a triangle in<br />clip space, no math. We just passed in some clip space coordinates<br />to a simple vertex shader that looked like this</p>
+
+<pre><code>  #version 300 es
+
+  // an attribute is an input (in) to a vertex shader.
+  // It will receive data from a buffer
+  in vec4 a_position;
+
+  // all shaders have a main function
+  void main() {
+
+    // gl_Position is a special variable a vertex shader
+    // is responsible for setting
+    gl_Position = a_position;
+  }
+</code></pre>
+
+<p>We had a simple fragment shader that draws a constant color</p>
+
+<pre><code>  #version 300 es
+
+  // fragment shaders don't have a default precision so we need
+  // to pick one. highp is a good default
+  precision highp float;
+
+  // we need to declare an output for the fragment shader
+  out vec4 outColor;
+
+  void main() {
+    // Just set the output to a constant reddish-purple
+    outColor = vec4(1, 0, 0.5, 1);
+  }
+</code></pre>
+
+<p>So let's make that draw 2 rectangles in clip space. We'll pass it this<br />data with <code>X</code>, <code>Y</code>, <code>Z</code>, and <code>W</code> for each vertex.</p>
+
+<pre><code>var positions = [
+  -.8, -.8, 0, 1,  // 1st rect 1st triangle
+   .8, -.8, 0, 1,
+  -.8, -.2, 0, 1,
+  -.8, -.2, 0, 1,  // 1st rect 2nd triangle
+   .8, -.8, 0, 1,
+   .8, -.2, 0, 1,
+
+  -.8,  .2, 0, 1,  // 2nd rect 1st triangle
+   .8,  .2, 0, 1,
+  -.8,  .8, 0, 1,
+  -.8,  .8, 0, 1,  // 2nd rect 2nd triangle
+   .8,  .2, 0, 1,
+   .8,  .8, 0, 1,
+];
+</code></pre>
+
+<p>Here's that</p>
+
+<p>{{{example url="../webgl-clipspace-rectangles.html" }}}</p>
+
+<p>Let's add a single varying float. We'll pass that directly<br />from the vertex shader to the fragment shader.</p>
+
+<pre><code>  #version 300 es
+
+  in vec4 a_position;
++  in float a_brightness;
+
++  out float v_brightness;
+
+  void main() {
+    gl_Position = a_position;
+
++    // just pass the brightness on to the fragment shader
++    v_brightness = a_brightness;
+  }
+</code></pre>
+
+<p>In the fragment shader we'll use that varying to set the color</p>
+
+<pre><code>  #version 300 es
+
+  precision highp float;
+
++  // passed in from the vertex shader and interpolated
++  in float v_brightness;
+
+   // we need to declare an output for the fragment shader
+   out vec4 outColor;
+
+  void main() {
+*    outColor = vec4(v_brightness, 0, 0, 1);  // reds
+  }
+</code></pre>
+
+<p>We need to supply data for that varying so we'll make a buffer and<br />put in some data. One value per vertex. We'll set all the brightness<br />values for vertices on the left to 0 and those on the right to 1.</p>
+
+<div class="highlight"><pre lang="">  // Create a buffer and put 12 brightness values in it
+  var brightnessBuffer = gl.createBuffer();
+
+  // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = brightnessBuffer)
+  gl.bindBuffer(gl.ARRAY_BUFFER, brightnessBuffer);
+
+  var brightness = [
+    0,  // 1st rect 1st triangle
+    1, 
+    0, 
+    0,  // 1st rect 2nd triangle
+    1, 
+    1, 
+
+<pre><code>0,  // 2nd rect 1st triangle
+1, 
+0, 
+0,  // 2nd rect 2nd triangle
+1, 
+1, 
+</code></pre>
+
+  ];
+
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(brightness), gl.STATIC_DRAW);
+</pre></div>
+
+<p>We also need to look up the location of the <code>a_brightness</code> attribute <br />at init time</p>
+
+<div class="highlight"><pre lang="">  // look up where the vertex data needs to go.
+  var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
++  var brightnessAttributeLocation = gl.getAttribLocation(program, "a_brightness");  
+</pre></div>
+
+<p>and setup that attribute at render time</p>
+
+<div class="highlight"><pre lang="">  // Turn on the attribute
+  gl.enableVertexAttribArray(brightnessAttributeLocation);
+
+  // Bind the position buffer.
+  gl.bindBuffer(gl.ARRAY_BUFFER, brightnessBuffer);
+
+  // Tell the attribute how to get data out of brightnessBuffer (ARRAY_BUFFER)
+  var size = 1;          // 1 component per iteration
+  var type = gl.FLOAT;   // the data is 32bit floats
+  var normalize = false; // don't normalize the data
+  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+  var offset = 0;        // start at the beginning of the buffer
+  gl.vertexAttribPointer(
+      brightnessAttributeLocation, size, type, normalize, stride, offset);
+</pre></div>
+
+<p>And now when we render we get two rectangles that are black on the left<br />when <code>brightness</code> is 0 and red on the right when <code>brightness</code> is 1 and<br />for the area in between <code>brightness</code> is interpolated or (varied) as it<br />goes across the triangles.</p>
+
+<p>{{{example url="../webgl-clipspace-rectangles-with-varying.html" }}}</p>
+
+<p>So then, from the <a href="webgl-3d-perspective.html">perspective article</a> we know that WebGL takes whatever value we put in <code>gl_Position</code> and it divides it by<br /><code>gl_Position.w</code>.</p>
+
+<p>In the vertices above we supplied <code>1</code> for <code>W</code> but since we know WebGL<br />will divide by <code>W</code> then we should be able do something like this<br />and get the same result.</p>
+
+<div class="highlight"><pre lang="">  var mult = 20;
+  var positions = [
+      -.8,  .8, 0, 1,  // 1st rect 1st triangle
+       .8,  .8, 0, 1,
+      -.8,  .2, 0, 1,
+      -.8,  .2, 0, 1,  // 1st rect 2nd triangle
+       .8,  .8, 0, 1,
+       .8,  .2, 0, 1,
+
+<pre><code>  -.8       , -.2       , 0,    1,  // 2nd rect 1st triangle
+   .8 * mult, -.2 * mult, 0, mult,
+  -.8       , -.8       , 0,    1,
+  -.8       , -.8       , 0,    1,  // 2nd rect 2nd triangle
+   .8 * mult, -.2 * mult, 0, mult,
+   .8 * mult, -.8 * mult, 0, mult,
+</code></pre>
+
+  ];
+</pre></div>
+
+<p>Above you can see that for every point on the right in the second<br />rectangle we are multiplying <code>X</code> and <code>Y</code> by <code>mult</code> but, we are also<br />setting <code>W</code> to <code>mult</code>. Since WebGL will divide by <code>W</code> we should get<br />the exact same result right?</p>
+
+<p>Well here's that</p>
+
+<p>{{{example url="../webgl-clipspace-rectangles-with-varying-non-1-w.html" }}}</p>
+
+<p>Note the 2 rectangles are drawn in the same place they were before. This<br />proves <code>X * MULT / MULT(W)</code> is still just <code>X</code> and same for <code>Y</code>. But, the<br />colors are different. What's going on?</p>
+
+<p>It turns out WebGL uses <code>W</code> to implement perspective correct<br />texture mapping or rather to do perspective correct interpolation<br />of varyings.</p>
+
+<p>In fact to make it easier to see let's hack the fragment shader to this</p>
+
+<pre><code>outColor = vec4(fract(v_brightness * 10.), 0, 0, 1);  // reds
+</code></pre>
+
+<p>multiplying <code>v_brightness</code> by 10 will make the value go from 0 to 10. <code>fract</code> will<br />just keep the fractional part so it will go 0 to 1, 0 to 1, 0 to 1, 10 times.</p>
+
+<p>{{{example url="../webgl-clipspace-rectangles-with-varying-non-1-w-repeat.html" }}}</p>
+
+<p>A linear interpolation from one value to another would be this<br />formula</p>
+
+<pre><code> result = (1 - t) * a + t * b
+</code></pre>
+
+<p>Where <code>t</code> is a value from 0 to 1 representing some position between <code>a</code> and <code>b</code>. 0 at <code>a</code> and 1 at <code>b</code>.</p>
+
+<p>For varyings though WebGL uses this formula</p>
+
+<pre><code> result = (1 - t) * a / aW + t * b / bW
+          -----------------------------
+             (1 - t) / aW + t / bW
+</code></pre>
+
+<p>Where <code>aW</code> is the <code>W</code> that was set on <code>gl_Position.w</code> when the varying was<br />as set to <code>a</code> and <code>bW</code> is the <code>W</code> that was set on <code>gl_Position.w</code> when the<br />varying was set to <code>b</code>.</p>
+
+<p>Why is that important? Well here's a simple textured cube like we ended up with in the <a href="webgl-3d-textures.html">article on textures</a>. I've adjusted<br />the UV coordinates to go from 0 to 1 on each side and it's using a 4x4 pixel texture.</p>
+
+<p>{{{example url="../webgl-perspective-correct-cube.html" }}}</p>
+
+<p>Now let's take that example and change the vertex shader so that<br />we divide by <code>W</code> ourselves. We just need to add 1 line.</p>
+
+<p><div class="highlight"><pre lang=""></p>
+
+<h1>version 300 es</h1>
+
+<p>in vec4 a_position;<br />in vec2 a_texcoord;</p>
+
+<p>uniform mat4 u_matrix;</p>
+
+<p>out vec2 v_texcoord;</p>
+
+<p>void main() {<br />  // Multiply the position by the matrix.<br />  gl_Position = u_matrix * a_position;</p>
+
+<ul>
+<li>// Manually divide by W.</li>
+<li><p>gl_Position /= gl_Position.w;</p>
+
+<p>// Pass the texcoord to the fragment shader.<br />v_texcoord = a_texcoord;<br />}<br /></pre></div></p></li>
+</ul>
+
+<p>Dividing by <code>W</code> means <code>gl_Position.w</code> will end up being 1. <br /><code>X</code>, <code>Y</code>, and <code>Z</code> will come out just like they would if we let<br />WebGL do the division for us. Well here are the results.</p>
+
+<p>{{{example url="../webgl-non-perspective-correct-cube.html" }}}</p>
+
+<p>We still get a 3D cube but the textures are getting warped. This <br />is because by not passing <code>W</code> as it was before WebGL is not able to do<br />perspective correct texture mapping. Or more correctly, WebGL is not<br />able to do perspective correct interpolation of varying.</p>
+
+<p>If you recall <code>W</code> was our<br /><code>Z</code> value from our <a href="webgl-3d-perspective.html">perspective matrix</a>).<br />With <code>W</code> just being <code>1</code> WebGL just ends up doing a linear interpolation.<br />In fact if you take the equation above</p>
+
+<pre><code> result = (1 - t) * a / aW + t * b / bW
+          -----------------------------
+             (1 - t) / aW + t / bW
+</code></pre>
+
+<p>And change all the <code>W</code>s to 1s we get</p>
+
+<pre><code> result = (1 - t) * a / 1 + t * b / 1
+          ---------------------------
+             (1 - t) / 1 + t / 1
+</code></pre>
+
+<p>Dividing by 1 does nothing so we can simplify to this</p>
+
+<pre><code> result = (1 - t) * a + t * b
+          -------------------
+             (1 - t) + t
+</code></pre>
+
+<p><code>(1 - t) + t</code> when <code>t</code> goes from 0 to 1 is the same as <code>1</code>. For example<br />if <code>t</code> was <code>.7</code> we'd get <code>(1 - .7) + .7</code> which is <code>.3 + .7</code> which is <code>1</code>. In other words we can remove the bottom so we're left with</p>
+
+<pre><code> result = (1 - t) * a + t * b
+</code></pre>
+
+<p>Which the same as the linear interpolation equation above.</p>
+
+<p>Hopefully it's now clear why WebGL uses a 4x4 matrix and <br />4 value vectors with <code>X</code>, <code>Y</code>, <code>Z</code>, and <code>W</code>. <code>X</code> and <code>Y</code> divided by <code>W</code> get a clip space coordinate. <code>Z</code> divided by <code>W</code> also get a clipspace coordinate in Z and <code>W</code> is still used during interpolation of varyings and<br />provides the ability to do perspective correct texture mapping.</p>
+
+<div class="webgl_bottombar">
+<h3>Mid 1990s Game Consoles</h3>
+<p>
+As a little piece of trivia the PlayStation 1 and some of the other 
+game consoles from the same era didn't do perspective correct texture mapping. Looking at the results above you can now see why
+they looked the way they did.
+</p>
+<div class="webgl_center"><img src="resources/ridge-racer-01.png" style="max-width: 500px;" /></div>
+<p></p>
+<div class="webgl_center"><img src="resources/ridge-racer-02.png" style="max-width: 500px;" /></div>
+</div>

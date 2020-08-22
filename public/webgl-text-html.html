@@ -1,0 +1,195 @@
+<p>Title: WebGL Text - HTML<br />Description: How to use HTML to display text that is positioned to match WebGL<br />TOC: Text - HTML</p>
+
+<p>This article is a continuation of previous WebGL articles.<br />If you haven't read them I suggest <a href="webgl-3d-perspective.html">you start there</a><br />and work your way back.</p>
+
+<p>A common question is "how to I draw text in WebGL". The first thing to ask yourself<br />is what's your purpose in drawing the text. You're in a browser, the browser<br />displays text. So your first answer should be to use HTML to display text.</p>
+
+<p>Let's do the easiest example first: You just want to draw some text over<br />your WebGL. We might call this a text overlay. Basically this is text that stays<br />in the same position.</p>
+
+<p>The simple way is to make an HTML element or elements and use CSS to make them overlap.</p>
+
+<p>For example: First make a container and put both a canvas and some HTML to be<br />overlaid inside the container.</p>
+
+<pre><code>&lt;div class="container"&gt;
+  &lt;canvas id="canvas" width="400" height="300"&gt;&lt;/canvas&gt;
+  &lt;div id="overlay"&gt;
+    &lt;div&gt;Time: &lt;span id="time"&gt;&lt;/span&gt;&lt;/div&gt;
+    &lt;div&gt;Angle: &lt;span id="angle"&gt;&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>Next setup the CSS so that the canvas and the HTML overlap</p>
+
+<pre><code>.container {
+    position: relative;
+}
+#overlay {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+}
+</code></pre>
+
+<p>Now look up those elements at init time and create or lookup the areas you want to<br />change.</p>
+
+<pre><code>// look up the elements we want to affect
+var timeElement = document.querySelector("#time");
+var angleElement = document.querySelector("#angle");
+
+// Create text nodes to save some time for the browser
+// and avoid allocations.
+var timeNode = document.createTextNode("");
+var angleNode = document.createTextNode("");
+
+// Add those text nodes where they need to go
+timeElement.appendChild(timeNode);
+angleElement.appendChild(angleNode);
+</code></pre>
+
+<p>Finally update the nodes when rendering</p>
+
+<pre><code>function drawScene(time) {
+    var now = time * 0.001;  // convert to seconds
+
+    ...
+
+    // convert rotation from radians to degrees
+    var angle = radToDeg(rotation[1]);
+
+    // only report 0 - 360
+    angle = angle % 360;
+
+    // set the nodes
+    angleNode.nodeValue = angle.toFixed(0);  // no decimal place
+    timeNode.nodeValue = now.toFixed(2);   // 2 decimal places
+</code></pre>
+
+<p>And here's that example</p>
+
+<p>{{{example url="../webgl-text-html-overlay.html" }}}</p>
+
+<p>Notice how I put spans inside the divs specifically for the parts I wanted to change. I'm making the<br />assumption here that that's faster than just using the divs with no spans and saying something like</p>
+
+<pre><code>timeNode.nodeValue = "Time " + clock.toFixed(2);
+</code></pre>
+
+<p>Also I'm using text nodes by calling <code>node = document.createTextNode()</code> and later <code>node.nodeValue = someMsg</code>.<br />I could also use <code>someElement.innerHTML = someHTML</code>. That would be more flexible because you could<br />insert arbitrary HTML strings though it might be slightly slower since the browser has to create<br />and destroy nodes each time you set it. Which is better is up to you.</p>
+
+<p>The important point to take way from the overlay technique is that WebGL runs in a browser. Remember to<br />use the browser's features when appropriate. Lots of OpenGL programmers are used to having to render<br />every part of their app 100% themselves from scratch but because WebGL runs in a browser it already<br />has tons of features. Use them. This has lots of benefits. For example you can use CSS styling to<br />easily give that overlay an interesting style.</p>
+
+<p>For example here's the same example but adding some style. The background is rounded, the letters have<br />a glow around them. There's a red border. You get all that essentially for free by using HTML.</p>
+
+<p>{{{example url="../webgl-text-html-overlay-styled.html" }}}</p>
+
+<p>The next most common thing to want to do is position some text relative to something you're rendering.<br />We can do that in HTML as well.</p>
+
+<p>In this case we'll again make a container with the canvas and another container for our moving HTML</p>
+
+<pre><code>&lt;div class="container"&gt;
+  &lt;canvas id="canvas" width="400" height="300"&gt;&lt;/canvas&gt;
+  &lt;div id="divcontainer"&gt;&lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>And we'll setup the CSS</p>
+
+<pre><code>.container {
+    position: relative;
+    overflow: none;
+}
+
+#divcontainer {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width: 400px;
+    height: 300px;
+    z-index: 10;
+    overflow: hidden;
+
+}
+
+.floating-div {
+    position: absolute;
+}
+</code></pre>
+
+<p>The <code>position: absolute;</code> part makes the <code>#divcontainer</code> be positioned in absolute terms relative<br />to the first parent with another <code>position: relative</code> or <code>position: absolute</code> style. In this case<br />that's the container that both the canvas and the <code>#divcontainer</code> are in.</p>
+
+<p>The <code>left: 0px; top: 0px</code> makes the <code>#divcontainer</code> align with everything. The <code>z-index: 10</code> makes<br />it float over the canvas. And the <code>overflow: hidden</code> makes its children get clipped.</p>
+
+<p>Finally <code>.floating-div</code> will be used for the positionable div we create.</p>
+
+<p>So now we need to look up the divcontainer, create a div and append it.</p>
+
+<pre><code>// look up the divcontainer
+var divContainerElement = document.querySelector("#divcontainer");
+
+// make the div
+var div = document.createElement("div");
+
+// assign it a CSS class
+div.className = "floating-div";
+
+// make a text node for its content
+var textNode = document.createTextNode("");
+div.appendChild(textNode);
+
+// add it to the divcontainer
+divContainerElement.appendChild(div);
+</code></pre>
+
+<p>Now we can position the div by setting its style.</p>
+
+<pre><code>div.style.left = Math.floor(x) + "px";
+div.style.top  = Math.floor(y) + "px";
+textNode.nodeValue = now.toFixed(2);
+</code></pre>
+
+<p>Here's an example where we're just bounding the div around.</p>
+
+<p>{{{example url="../webgl-text-html-bouncing-div.html" }}}</p>
+
+<p>So the next step is we want to place it relative to something in the 3D scene.<br />How do we do that? We do it exactly how we asked the GPU to do it when we<br /><a href="webgl-3d-perspective.html">covered perspective projection</a>.</p>
+
+<p>Up through that example we learned how to use matrices, how to multiply them,<br />and how to apply a projection matrix to convert them to clip space. We pass all<br />of that to our shader and it multiplies vertices in local space and converts<br />them to clip space. We can do all the math ourselves in JavaScript as well.<br />Then we can multiply clip space (-1 to +1) into pixels and use<br />that to position the div.</p>
+
+<pre><code>gl.drawArrays(...);
+
+// We just got through computing a matrix to draw our
+// F in 3D.
+
+// choose a point in the local space of the 'F'.
+//             X  Y  Z  W
+var point = [100, 0, 0, 1];  // this is the front top right corner
+
+// compute a clip space position
+// using the matrix we computed for the F
+var clipspace = m4.transformVector(matrix, point);
+
+// divide X and Y by W just like the GPU does.
+clipspace[0] /= clipspace[3];
+clipspace[1] /= clipspace[3];
+
+// convert from clipspace to pixels
+var pixelX = (clipspace[0] *  0.5 + 0.5) * gl.canvas.width;
+var pixelY = (clipspace[1] * -0.5 + 0.5) * gl.canvas.height;
+
+// position the div
+div.style.left = Math.floor(pixelX) + "px";
+div.style.top  = Math.floor(pixelY) + "px";
+textNode.nodeValue = now.toFixed(2);
+</code></pre>
+
+<p>And voila, the top left corner of our div is perfectly aligned<br />with the top right front corner of the F.</p>
+
+<p>{{{example url="../webgl-text-html-div.html" }}}</p>
+
+<p>Of course if you want more text make more divs.</p>
+
+<p>{{{example url="../webgl-text-html-divs.html" }}}</p>
+
+<p>You can look at the source of that last example to see the<br />details. One important point is I'm just guessing that<br />creating, appending and removing HTML elements from the DOM<br />is slow so the example above creates them and keeps them<br />around. It hides any unused ones rather than removing them<br />from the DOM. You'd have to profile to know if that's faster.<br />That was just the method I chose.</p>
+
+<p>Hopefully it's clear how to use HTML for text. <a href="webgl-text-canvas2d.html">Next we'll<br />cover using Canvas 2D for text</a>.</p>

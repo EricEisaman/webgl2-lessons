@@ -1,0 +1,192 @@
+<p>Title: WebGL2 Precision Issues<br />Description: Precision Issues in WebGL2<br />TOC: Precision Issues</p>
+
+<p>This article is about various precision issues in WebGL2</p>
+
+<h2><code>lowp</code>, <code>mediump</code>, <code>highp</code></h2>
+
+<p>In <a href="webgl-fundamentals.html">the first article on this site</a> we created<br />a vertex shader and a fragment shader. When we created the fragment<br />shader it was mentioned almost in passing that a fragment shader<br />doesn't have a default precision and so we needed to set one by adding<br />the line</p>
+
+<pre><code>
+precision highp float;
+</code></pre>
+
+<p>What that heck was that about?</p>
+
+<p><code>lowp</code>, <code>mediump</code>, and <code>highp</code> are precision settings. Precision in this case<br />effectively means how many bits are used to store a value. A number in<br />Javascript uses 64bits. Most numbers in WebGL are only 32bits. Less bits =<br />faster, more bits = more accurate and/or larger range.</p>
+
+<p>I don't know if I can explain this well. You can search for <br /><a href="https://www.google.com/search?q=double+vs+float">double vs float</a><br />for other examples of precision issues but one way to explain it is like the<br />difference between a byte and a short or in JavaScript a <code>Uint8Array</code> vs a<br /><code>Uint16Array</code>.</p>
+
+<ul>
+<li>A <code>Uint8Array</code> is an array of unsigned 8bit integers. 8bits can hold 2<sup>8</sup> values from 0 to 255.</li>
+<li>A <code>Uint16Array</code> is an array of unsigned 16bit integers. 16bits can hold 2<sup>16</sup> values from 0 to 65535.</li>
+<li>A <code>Uint32Array</code> is an array of unsigned 32bit integers. 32bits can hold 2<sup>32</sup> values from 0 to 4294967295.</li>
+</ul>
+
+<p><code>lowp</code>, <code>mediump</code>, and <code>highp</code> are similar.</p>
+
+<ul>
+<li><p><code>lowp</code> is at least an 9 bit value. For floating point values they can range <br />from: -2 to +2, for integer values they are similar to <code>Uint8Array</code> or <code>Int8Array</code></p></li>
+<li><p><code>mediump</code> is at least a 16 bit value. For floating point values they can range<br />from: -2<sup>14</sup> to +2<sup>14</sup>, for integer values they are similar to<br /><code>Uint16Array</code> or <code>Int16Array</code></p></li>
+<li><p><code>highp</code> is at least a 32 bit value. For floating point values they can range<br />from: -2<sup>62</sup> to +2<sup>62</sup>, for integer values they are similar to<br /><code>Uint32Array</code> or <code>Int32Array</code></p></li>
+</ul>
+
+<p>It's important to note that not every value inside the range can be represented.<br />The easiest to understand is probably <code>lowp</code>. There are only 9 bits and so only<br />512 unique values can be represented. Above it says the range is -2 to +2 but<br />there are an infinite number of values between -2 and +2. For example 1.9999999<br />and 1.999998 are 2 values between -2 and +2. With only 9 bits <code>lowp</code> can't<br />represent those 2 values. So for example, if you want do some math on color and<br />you used <code>lowp</code> you might see a some banding. Without actually digging into what<br />actual values can be represented, we know colors go from 0 to 1. Is if <code>lowp</code><br />goes from -2 to +2 and can only represent 512 unique values then it seems likely<br />only 128 of those values fit between 0 and 1. That would also suggest if you have<br />a value that is 4/128ths and I try to add 1/512th to it, nothing will happen<br />because 1/512th can't be represented by <code>lowp</code> so it's effectively 0.</p>
+
+<p>We could just use <code>highp</code> everywhere and ignore this issue completely<br />but on devices that do actually use 9 bits for <code>lowp</code> and/or 16bits for<br /><code>mediump</code> they are usually faster than <code>highp</code>. Often significantly faster.</p>
+
+<p>To that last point, unlike values in a <code>Uint8Array</code> or <code>Uint16Array</code>, a <code>lowp</code><br />or <code>mediump</code> value or for that matter even a <code>highp</code> value is allowed to use<br />higher precision (more bits). So for example on a desktop GPU if you put<br /><code>mediump</code> in your shader it will still most likely use 32bits internally. This<br />has the problem of making it hard to test your shaders if you use <code>lowp</code> or<br /><code>mediump</code>. To see if the your shaders actually work correctly with <code>lowp</code> or<br /><code>mediump</code> you have to test on a device that actually uses 8bits for <code>lowp</code> and<br />16bits for <code>highp</code>.</p>
+
+<p>If you do want to try to use <code>mediump</code> for speed here are some of the issues<br />that come up.</p>
+
+<p>A good example is probably the example of <a href="webgl-3d-lighting-point.html">point lights</a>,<br />in particular the specular highlight calculation, passes values in world or view space to the fragment shader,<br />those values can easily get out of range for a <code>mediump</code> value. So, maybe on<br />a <code>mediump</code> device you could just leave out the specular highlights. For example here<br />is the point light shader from <a href="webgl-3d-lighting-point.html">the article on point lights</a><br />modified to for <code>mediump</code>.</p>
+
+<pre><code>
+#version 300 es
+
+-precision highp float;
++precision mediump float;
+
+// Passed in and varied from the vertex shader.
+in vec3 v_normal;
+in vec3 v_surfaceToLight;
+in vec3 v_surfaceToView;
+
+uniform vec4 u_color;
+uniform float u_shininess;
+
+// we need to declare an output for the fragment shader
+out vec4 outColor;
+
+void main() {
+  // because v_normal is a varying it's interpolated
+  // so it will not be a uint vector. Normalizing it
+  // will make it a unit vector again
+  vec3 normal = normalize(v_normal);
+
+  vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
+-  vec3 surfaceToViewDirection = normalize(v_surfaceToView);
+-  vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
+
+  // compute the light by taking the dot product
+  // of the normal to the light's reverse direction
+  float light = dot(normal, surfaceToLightDirection);
+-  float specular = 0.0;
+-  if (light > 0.0) {
+-    specular = pow(dot(normal, halfVector), u_shininess);
+-  }
+
+  outColor = u_color;
+
+  // Lets multiply just the color portion (not the alpha)
+  // by the light
+  outColor.rgb *= light;
+
+-  // Just add in the specular
+-  outColor.rgb += specular;
+}
+</code></pre>
+
+<p>Note: Even that is not really enough. In the vertex shader we have</p>
+
+<pre><code>
+  // compute the vector of the surface to the light
+  // and pass it to the fragment shader
+  v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
+</code></pre>
+
+<p>So let's say the light is 1000 units away from the surface.<br />We then get to the fragment shader and this line</p>
+
+<pre><code>
+  vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
+</code></pre>
+
+<p>seems innocent enough. Except that the normal way to normalize vector<br />is to divide by its length and the normal way to compute a length is</p>
+
+<div class="highlight"><pre lang="">  float length = sqrt(v.x * v.x + v.y * v.y * v.z * v.z);
+</pre></div>
+
+<p>If one of those x, y, or z is 1000 then 1000*1000 is 1000000. 1000000<br />is out of range for <code>mediump</code>.</p>
+
+<p>One solution here is to normalize in the vertex shader.</p>
+
+<div class="highlight"><pre lang="">  // compute the vector of the surface to the light
+  // and pass it to the fragment shader
+-  v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
++  v_surfaceToLight = normalize(u_lightWorldPosition - surfaceWorldPosition);
+</pre></div>
+
+<p>Now the values assigned to <code>v_surfaceToLight</code> are between -1 and +1 which<br />is in range for <code>mediump</code>.</p>
+
+<p>Note that normalizing in the vertex shader will not actually give the<br />same results but they might be close enough that no one will notice<br />unless compared side by side.</p>
+
+<p>Functions like <code>normalize</code>, <code>length</code>, <code>distance</code>, <code>dot</code> all have this<br />issue that if the values are too large they're going to go out of range<br />for <code>mediump</code>.</p>
+
+<p>But, you actually be to test on a device for which <code>mediump</code> is 16 bits.<br />On desktop <code>mediump</code> is 32bits, the same as <code>highp</code> and so any issues<br />will not be visible.</p>
+
+<h2>Detecting support for 16bit <code>mediump</code></h2>
+
+<p>You call <code>gl.getShaderPrecisionFormat</code>,<br />you pass in the shader type, <code>VERTEX_SHADER</code> or <code>FRAGMENT_SHADER</code> and you<br />pass in one of <code>LOW_FLOAT</code>, <code>MEDIUM_FLOAT</code>, <code>HIGH_FLOAT</code>,<br /><code>LOW_INT</code>, <code>MEDIUM_INT</code>, <code>HIGH_INT</code>, and it<br />[returns the precision info].</p>
+
+<p>{{{example url="../webgl-precision-lowp-mediump-highp.html"}}}</p>
+
+<p><code>gl.getShaderPrecisionFormat</code> returns a object with three values, <code>precision</code>, <code>rangeMin</code>, and <code>rangeMax</code>.</p>
+
+<p>For <code>LOW_FLOAT</code> and <code>MEDIUM_FLOAT</code> <code>precision</code> will 23 if they are really<br />just <code>highp</code>. Otherwise they'll likely be 8 and 15 respectively or<br />at least they will be less than 23. For <code>LOW_INT</code> and <code>MEDIUM_INT</code><br />if they're the same as <code>highp</code> then <code>rangeMin</code> will be 31. If they're<br />less than 31 then a <code>mediump int</code> is actually more efficient than a<br /><code>highp int</code> for example.</p>
+
+<p>My Pixel 2 XL uses 16 bits for <code>mediump</code> it also uses 16 bits for <code>lowp</code>. I'm not sure I've ever used a device that uses 9 bits for <code>lowp</code> so I'm not sure what issues commonly come up if any.</p>
+
+<p>Throughout these articles we've specified a default precision<br />in the fragment shader. We can also specify the precision of any individual<br />variable. For example</p>
+
+<pre><code>
+uniform mediump vec4 color;  // a uniform
+in lowp vec4 normal;         // an attribute or varying input
+out lowp vec4 texcoord;      // a fragment shader output or varying output
+lowp float foo;              // a variable
+</code></pre>
+
+<h2>Texture Formats</h2>
+
+<p>Textures are another place where the spec says the actual precision<br />used can be greater then the precision requested.</p>
+
+<p>As an example you can ask for 16 bit, 4bits per channel texture like this</p>
+
+<div class="highlight"><pre lang="">gl.texImage2D(
+  gl.TEXTURE_2D,               // target
+  0,                           // mip level
+  gl.RGBA4,                    // internal format
+  width,                       // width
+  height,                      // height
+  0,                           // border
+  gl.RGBA,                     // format
+  gl.UNSIGNED_SHORT_4_4_4_4,   // type
+  null,
+);
+</pre></div>
+
+<p>But the implementation might actually use a higher resolution format internally.<br />I believe most desktops do this and most mobile GPUs do not.</p>
+
+<p>We can test. First we'll request a 4bit per channel texture like above.<br />Then we'll <a href="webgl-render-to-texture.html">render to it</a> by rendering<br />some 0 to 1 gradient.</p>
+
+<p>We'll then render that texture to the canvas. If the texture really is 4 bits<br />per channel internally there will only be 16 levels of color from the gradient<br />we drew. If the texture is really 8bits per channel we'll see 256 levels of<br />colors.</p>
+
+<p>{{{example url="../webgl-precision-textures.html"}}}</p>
+
+<p>Running it on my smartphone I see the texture is using 4bits per channel<br />(or at least 4 bits in red since I didn't test the other channels).</p>
+
+<div class="webgl_center"><img src="resources/mobile-4-4-4-4-texture-no-dither.png" style="image-rendering: pixelated; width: 600px;"></div>
+
+<p>Where as on my desktop I can see the texture is actually using 8bits per<br />channel even though I only asked for 4.</p>
+
+<div class="webgl_center"><img src="resources/desktop-4-4-4-4-texture-no-dither.png" style="image-rendering: pixelated; width: 600px;"></div>
+
+<p>One thing to note is that by default WebGL can dither its results to make<br />gradations like this look smoother. You can turn off dithering with</p>
+
+<pre><code>
+gl.disable(gl.DITHER);
+</code></pre>
+
+<p>If I don't turn off dithering then my smartphone produces this.</p>
+
+<div class="webgl_center"><img src="resources/mobile-4-4-4-4-texture-dither.png" style="image-rendering: pixelated; width: 600px;"></div>
+
+<p>Off the top of my head the only place this would really come up is if you<br />used some lower bit resolution format texture as a render target and didn't<br />test on a device where that texture is actually that lower resolution.<br />If you only tested on desktop any issues it causes might not be apparent.</p>

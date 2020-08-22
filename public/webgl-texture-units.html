@@ -1,0 +1,115 @@
+<p>Title: WebGL Texture Units<br />Description: What are texture units in WebGL?<br />TOC: Texture Units</p>
+
+<p>This article is meant to try to give you a mental image<br />of how texture units are setup in WebGL. There is <a href="webgl-attributes.html">a similar article on attributes</a>.</p>
+
+<p>As a prerequisite you probably want to read <a href="webgl-how-it-works.html">How WebGL Works</a><br />and <a href="webgl-shaders-and-glsl.html">WebGL Shaders and GLSL</a><br />as well as <a href="webgl-3d-textures.html">WebGL Textures</a></p>
+
+<h2>Texture Units</h2>
+
+<p>In WebGL there are textures. Textures are 2D arrays of data you can pass to a shader.<br />In the shader you declare a <em>uniform sampler</em> like this</p>
+
+<pre><code>
+uniform sampler2D someTexture;
+</code></pre>
+
+<p>But how does the shader know which texture to use for <code>someTexture</code>?</p>
+
+<p>That's where texture units come in. Texture units are a <strong>global array</strong> of<br />references to textures. You can imagine if WebGL was written in JavaScript<br />it would have some global state that looks like this</p>
+
+<pre><code>
+const gl = {
+  activeTextureUnit: 0,
+  textureUnits: [
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+    { TEXTURE_2D: null, TEXTURE_CUBE_MAP: null, TEXTURE_3D: null, TEXTURE_2D_ARRAY, null, },
+  ];
+}
+</code></pre>
+
+<p>You can see above <code>textureUnits</code> is an array. You assign a texture to one of the <em>bind points</em> in that array<br />of texture units. Let's assign <code>ourTexture</code> to texture unit 5.</p>
+
+<pre><code>
+// at init time
+const ourTexture = gl.createTexture();
+// insert code it init texture here.
+
+...
+
+// at render time
+const indexOfTextureUnit = 5;
+gl.activeTexture(gl.TEXTURE0 + indexOfTextureUnit);
+gl.bindTexture(gl.TEXTURE_2D, ourTexture);
+</code></pre>
+
+<p>You then tell the shader which texture unit you bound the texture to by calling </p>
+
+<pre><code>
+gl.uniform1i(someTextureUniformLocation, indexOfTextureUnit);
+</code></pre>
+
+<p>If <code>activeTexture</code> and <code>bindTexture</code> WebGL functions were implemented in JavaScript they'd look<br />something like:</p>
+
+<pre><code>
+// PSEUDO CODE!!!
+gl.activeTexture = function(unit) {
+  gl.activeTextureUnit = unit - gl.TEXTURE0;  // convert to 0 based index
+};
+
+gl.bindTexture = function(target, texture) {
+  const textureUnit = gl.textureUnits[gl.activeTextureUnit];
+  textureUnit[target] = texture;
+}:
+</code></pre>
+
+<p>You can even imagine how other texture functions work. They all take a <code>target</code><br />like <code>gl.texImage2D(target, ...)</code> or <code>gl.texParameteri(target)</code>. Those would<br />be implemented something like</p>
+
+<pre><code>
+// PSEUDO CODE!!!
+gl.texImage2D = function(target, level, internalFormat, width, height, border, format, type, data) {
+  const textureUnit = gl.textureUnits[gl.activeTextureUnit];
+  const texture = textureUnit[target];
+  texture.mips[level] = convertDataToInternalFormat(internalFormat, width, height, format, type, data);
+}
+
+gl.texParameteri = function(target, pname, value) {
+  const textureUnit = gl.textureUnits[gl.activeTextureUnit];
+  const texture = textureUnit[target];
+  texture[pname] = value; 
+}
+</code></pre>
+
+<p>It should be clear from the example pseudo code above <code>gl.activeTexture</code> sets an<br />internal global variable inside WebGL to an index of the array of texture units.<br />From that point on, all the other texture functions take a <code>target</code>, the first<br />argument in every texture function, that references the bind point of the<br />current texture unit.</p>
+
+<h2>Maximum Texture Units</h2>
+
+<p>WebGL requires an implementation to support at least 32 texture units. You can query how many<br />are supported with</p>
+
+<pre><code>
+const maxTextureUnits = gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+</code></pre>
+
+<p>Note that vertex shaders and fragment shaders might have different limits<br />on how many units each can use. You can query the limits for each with</p>
+
+<pre><code>
+const maxVertexShaderTextureUnits = gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS);
+const maxFragmentShaderTextureUnits = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
+</code></pre>
+
+<p>Each are required to support at least 16 texture units.</p>
+
+<p>Let's say </p>
+
+<pre><code>
+maxTextureUnits = 32
+maxVertexShaderTextureUnits = 16
+maxFragmentShaderTextureUnits = 32
+</code></pre>
+
+<p>This means if you use for example 2 texture units in your vertex shader<br />there are only 30 left to use in your fragment shader since the combined<br />maximum is 32.</p>

@@ -1,0 +1,107 @@
+<p>Title: WebGL - Animation<br />Description: How to do animation in WebGL<br />TOC: Animation</p>
+
+<p>This post is a continuation of a series of posts about WebGL.<br />The first <a href="webgl-fundamentals.html">started with fundamentals</a>.<br />and the previous was about <a href="webgl-3d-camera.html">3D cameras</a>.<br />If you haven't read those please view them first.</p>
+
+<p>How do we animate something in WebGL?</p>
+
+<p>Actually this isn't specific to WebGL but generally if you want<br />to animate something in JavaScript you need to change something<br />over time and draw again.</p>
+
+<p>We can take one of our previous samples and animate it as follows.</p>
+
+<pre><code>*var fieldOfViewRadians = degToRad(60);
+*var rotationSpeed = 1.2;
+
+*requestAnimationFrame(drawScene);
+
+// Draw the scene.
+function drawScene() {
+*  // Every frame increase the rotation a little.
+*  rotation[1] += rotationSpeed / 60.0;
+
+  ...
+*  // Call drawScene again next frame
+*  requestAnimationFrame(drawScene);
+}
+</code></pre>
+
+<p>And here it is</p>
+
+<p>{{{example url="../webgl-animation-not-frame-rate-independent.html" }}}</p>
+
+<p>There's a subtle problem though. The code above has a<br /><code>rotationSpeed / 60.0</code>. We divided by 60.0 because we assumed the browser<br />will respond to requestAnimationFrame 60 times a second which is pretty common.</p>
+
+<p>That's not actually a valid assumption though. Maybe the user is on a low-powered<br />device like an old smartphone. Or maybe the user is running some heavy program in<br />the background. There are all kinds of reasons the browser might not be displaying<br />frames at 60 frames a second. Maybe it's the year 2020 and all machines run at 240<br />frames a second now. Maybe the user is a gamer and has a CRT monitor running at 90<br />frames a second.</p>
+
+<p>You can see the problem in this example</p>
+
+<p>{{{diagram url="../webgl-animation-frame-rate-issues.html" }}}</p>
+
+<p>In the example above we want to rotate all of the 'F's at the same speed.<br />The 'F' in the middle is running full speed and is frame rate independent. The one<br />on the left and the right are simulating if the browser was only running at 1/8th<br />max speed for the current machine. The one on the left is <strong>NOT</strong> frame rate<br />independent. The one on the right <strong>IS</strong> frame rate independent.</p>
+
+<p>Notice because the one on the left is not taking into account that the frame rate<br />might be slow it's not keeping up. The one on the right though, even though it's<br />running at 1/8 the frame rate it is keeping up with the middle one running at full<br />speed.</p>
+
+<p>The way to make animation frame rate independent is to compute how much time it took<br />between frames and use that to calculate how much to animate this frame.</p>
+
+<p>First off we need to get the time. Fortunately <code>requestAnimationFrame</code> passes<br />us the time since the page was loaded when it calls us.</p>
+
+<p>I find it easiest if we get the time in seconds but since the <code>requestAnimationFrame</code><br />passes us the time in milliseconds (1000ths of a second) we need to multiply by 0.001<br />to get seconds.</p>
+
+<p>So, we can then compute the delta time like this</p>
+
+<pre><code>*var then = 0;
+
+requestAnimationFrame(drawScene);
+
+// Draw the scene.
+*function drawScene(now) {
+*  // Convert the time to seconds
+*  now *= 0.001;
+*  // Subtract the previous time from the current time
+*  var deltaTime = now - then;
+*  // Remember the current time for the next frame.
+*  then = now;
+
+   ...
+</code></pre>
+
+<p>Once we have the <code>deltaTime</code> in seconds then all our calculations can be in how<br />many units per second we want something to happen. In this case<br /><code>rotationSpeed</code> is 1.2 which means we want to rotate 1.2 radians per second.<br />That's about 1/5 of a turn or in other words it will take about 5 seconds to<br />turn around completely regardless of the frame rate.</p>
+
+<pre><code>*    rotation[1] += rotationSpeed * deltaTime;
+</code></pre>
+
+<p>Here's that one working.</p>
+
+<p>{{{example url="../webgl-animation.html" }}}</p>
+
+<p>You aren't likely to see a difference from the one<br />at the top of this page unless you are on a slow machine but if you don't<br />make your animations frame rate independent you'll likely have some users<br />that are getting a very different experience than you planned.</p>
+
+<p>Next up <a href="webgl-3d-textures.html">how to apply textures</a>.</p>
+
+<div class="webgl_bottombar">
+<h3>Don't use setInterval or setTimeout!</h3>
+<p>If you've been programming animation in JavaScript in the past
+you might have used either <code>setInterval</code> or <code>setTimeout</code> to get your
+drawing function to be called.
+</p><p>
+The problems with using <code>setInterval</code> or <code>setTimeout</code> to do animation
+are two fold. First off both <code>setInterval</code> and <code>setTimeout</code> have no relation
+to the browser displaying anything. They aren't synced to when the browser is
+going to draw a new frame and so can be out of sync with the user's machine.
+If you use <code>setInterval</code> or <code>setTimeout</code> and assume 60 frames
+a second and the user's machine is actually running some other frame rate you'll
+be out of sync with their machine.
+</p><p>
+The other problem is the browser has no idea why you're using <code>setInterval</code> or
+<code>setTimeout</code>. So for example, even when your page is not visible,
+like when it's not the front tab, the browser still has to execute your code.
+Maybe you're using <code>setTimeout</code> or <code>setInterval</code> to check
+for new mail or tweets. There's no way for the browser to know. That's fine if
+you're just checking every few seconds for new messages but it's not fine if
+you're trying to draw 1000 objects in WebGL. You'll be effectively DOSing the
+user's machine with your invisible tab drawing stuff they can't even see.
+</p><p>
+<code>requestAnimationFrame</code> solves both of these issues. It calls you at just the
+right time to sync your animation with the screen and it also only calls you if
+your tab is visible.
+</p>
+</div>

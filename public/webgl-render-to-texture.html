@@ -1,0 +1,237 @@
+<p>Title: WebGL2 Rendering to a Texture<br />Description: How to render to a texture.<br />TOC: Render to Texture</p>
+
+<p>This post is a continuation of a series of posts about WebGL2.<br />The first <a href="webgl-fundamentals.html">started with fundamentals</a> and<br />the previous was about <a href="webgl-data-textures.html">supplying data to textures</a>.<br />If you haven't read those please view them first.</p>
+
+<p>In the last post we went over how to supply data from JavaScript to textures.<br />In this article we'll render to textures using WebGL2. Note this topic<br />was covered tersely under <a href="webgl-image-processing-continued.html">image processing</a> but<br />let's cover it in more detail.</p>
+
+<p>Rendering to a texture is pretty simple. We create a texture of a certain size</p>
+
+<pre><code>// create to render to
+const targetTextureWidth = 256;
+const targetTextureHeight = 256;
+const targetTexture = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+
+{
+  // define size and format of level 0
+  const level = 0;
+  const internalFormat = gl.RGBA;
+  const border = 0;
+  const format = gl.RGBA;
+  const type = gl.UNSIGNED_BYTE;
+  const data = null;
+  gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                targetTextureWidth, targetTextureHeight, border,
+                format, type, data);
+
+  // set the filtering so we don't need mips
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+</code></pre>
+
+<p>Notice how <code>data</code> is <code>null</code>. We don't need to supply any data. We just need WebGL to<br />allocate the texture.</p>
+
+<p>Next we create a framebufffer. A framebuffer is just a collection of attachments. Attachments<br />are either textures or renderbuffers. We've gone over textures before. Renderbuffers are very similar<br />to textures but they support formats and options that textures don't support. Also, unlike a texture<br />you can't directly use a renderbuffer as input to a shader.</p>
+
+<p>Let's create a framebuffer and attach our texture</p>
+
+<pre><code>// Create and bind the framebuffer
+const fb = gl.createFramebuffer();
+gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+
+// attach the texture as the first color attachment
+const attachmentPoint = gl.COLOR_ATTACHMENT0;
+gl.framebufferTexture2D(
+    gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
+</code></pre>
+
+<p>Just like textures and buffers, after we create the framebuffer we need to<br />bind it to the <code>FRAMEBUFFER</code> bind point. After that all functions related to<br />framebuffers reference whatever framebuffer is bound there.</p>
+
+<p>With our framebuffer bound, anytime we call <code>gl.clear</code>, <code>gl.drawArrays</code>, or <code>gl.drawElements</code> WebGL<br />would render to our texture instead of the canvas.</p>
+
+<p>Let's take are previous rendering code and make it a function so we can call it twice.<br />Once to render to the texture and again to render to the canvas.</p>
+
+<div class="highlight"><pre lang="">function drawCube(aspect) {
+  // Tell it to use our program (pair of shaders)
+  gl.useProgram(program);
+
+  // Bind the attribute/buffer set we want.
+  gl.bindVertexArray(vao);
+
+  // Compute the projection matrix
+  -  var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+  var projectionMatrix =
+      m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
+
+  var cameraPosition = [0, 0, 2];
+  var up = [0, 1, 0];
+  var target = [0, 0, 0];
+
+  // Compute the camera's matrix using look at.
+  var cameraMatrix = m4.lookAt(cameraPosition, target, up);
+
+  // Make a view matrix from the camera matrix.
+  var viewMatrix = m4.inverse(cameraMatrix);
+
+  var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
+
+  var matrix = m4.xRotate(viewProjectionMatrix, modelXRotationRadians);
+  matrix = m4.yRotate(matrix, modelYRotationRadians);
+
+  // Set the matrix.
+  gl.uniformMatrix4fv(matrixLocation, false, matrix);
+
+  // Tell the shader to use texture unit 0 for u_texture
+  gl.uniform1i(textureLocation, 0);
+
+  // Draw the geometry.
+  var primitiveType = gl.TRIANGLES;
+  var offset = 0;
+  var count = 6 * 6;
+  gl.drawArrays(primitiveType, offset, count);
+}
+</pre></div>
+
+<p>Note that we need to pass in the <code>aspect</code> for computing our projection matrix<br />because our target texture has a different aspect than the camera.</p>
+
+<p>Here's how we call it</p>
+
+<div class="highlight"><pre lang="">// Draw the scene.
+function drawScene(time) {
+
+  ...
+
+  {
+    // render to our targetTexture by binding the framebuffer
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+
+<pre><code>// render cube with our 3x2 texture
+gl.bindTexture(gl.TEXTURE_2D, texture);
+
+// Tell WebGL how to convert from clip space to pixels
+gl.viewport(0, 0, targetTextureWidth, targetTextureHeight);
+
+// Clear the canvas AND the depth buffer.
+gl.clearColor(0, 0, 1, 1);   // clear to blue
+gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+const aspect = targetTextureWidth / targetTextureHeight;
+drawCube(aspect)
+</code></pre>
+
+  }
+
+  {
+    // render to the canvas
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+<pre><code>// render the cube with the texture we just rendered to
+gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+
+// Tell WebGL how to convert from clip space to pixels
+gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+// Clear the canvas AND the depth buffer.
+gl.clearColor(1, 1, 1, 1);   // clear to white
+gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+drawCube(aspect)
+</code></pre>
+
+  }
+
+  requestAnimationFrame(drawScene);
+}
+</pre></div>
+
+<p>And here's the result</p>
+
+<p>{{{example url="../webgl-render-to-texture.html" }}}</p>
+
+<p>It's <strong>EXTREMELY IMPORTANT</strong> to remember to call <code>gl.viewport</code> and set it to<br />the size of the thing your rendering to. In this case the first time we're<br />rendering to the texture so we set the viewport to cover the texture. The 2nd<br />time we're rendering to the canvas so we set the viewport to cover the canvas.</p>
+
+<p>Similarly when we compute a projection matrix<br />we need to use the correct aspect for thing we're rendering to. I have lost countless<br />hours of debugging wondering why something is rendering funny or not rendering<br />at all only to finally discover that I forgot one or both calling <code>gl.viewport</code><br />and computing the correct aspect. It's so easy to forget that I now try to never call<br /><code>gl.bindFramebuffer</code> in my own code directly. Instead I make a function that does both<br />something like</p>
+
+<pre><code>function bindFramebufferAndSetViewport(fb, width, height) {
+   gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+   gl.viewport(0, 0, width, height);
+}
+</code></pre>
+
+<p>And then I only use that function to change what I'm rendering to. That way I won't forget.</p>
+
+<p>One thing to notice is we don't have a depth buffer on our framebuffer. We only have a texture.<br />This means there is no depth testing and 3D won't work. If we draw 3 cubes we can see this.</p>
+
+<p>{{{example url="../webgl-render-to-texture-3-cubes-no-depth-buffer.html" }}}</p>
+
+<p>If you look at the center cube you'll see the 3 vertical cubes draw on it one is in back, one is in the middle<br />and another is in front but we're drawing all 3 at the same depth. Looking that the 3 horizontal cubes<br />draw on the canvas you'll notice they correctly intersect each other. That's because our framebuffer<br />has no depth buffer but our canvas does.</p>
+
+<p><img class="webgl_center" src="resources/cubes-without-depth-buffer.jpg" width="100%" height="100%" /></p>
+
+<p>To add a depth buffer we create a depth texture and attach it to our framebuffer.</p>
+
+<div class="highlight"><pre lang="">// create a depth texture
+const depthTexture = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+
+// make a depth buffer and the same size as the targetTexture
+{
+  // define size and format of level 0
+  const level = 0;
+  const internalFormat = gl.DEPTH_COMPONENT24;
+  const border = 0;
+  const format = gl.DEPTH_COMPONENT;
+  const type = gl.UNSIGNED_INT;
+  const data = null;
+  gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+                targetTextureWidth, targetTextureHeight, border,
+                format, type, data);
+
+  // set the filtering so we don't need mips
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  // attach the depth texture to the framebuffer
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTexture, level);
+}
+</pre></div>
+
+<p>And with that this is the result.</p>
+
+<p>{{{example url="../webgl-render-to-texture-3-cubes-with-depth-buffer.html" }}}</p>
+
+<p>Now that we have a depth buffer attached to our framebuffer the inner cubes correctly intersect.</p>
+
+<p><img class="webgl_center" src="resources/cubes-with-depth-buffer.jpg" width="100%" height="100%" /></p>
+
+<p>It's important to note WebGL only promises certain combinations of attachments work.<br /><a href="https://www.khronos.org/registry/webgl/specs/latest/1.0/#FBO_ATTACHMENTS">According to the spec</a><br />the only guaranteed combinations of attachments are:</p>
+
+<ul>
+<li><code>COLOR_ATTACHMENT0</code> = <code>RGBA/UNSIGNED_BYTE</code> texture</li>
+<li><code>COLOR_ATTACHMENT0</code> = <code>RGBA/UNSIGNED_BYTE</code> texture + <code>DEPTH_ATTACHMENT</code> = <code>DEPTH_COMPONENT16</code> renderbuffer</li>
+<li><code>COLOR_ATTACHMENT0</code> = <code>RGBA/UNSIGNED_BYTE</code> texture + <code>DEPTH_STENCIL_ATTACHMENT</code> = <code>DEPTH_STENCIL</code> renderbuffer</li>
+</ul>
+
+<p>For any other combinations you must check if the user's system/gpu/driver/browser supports that combination.<br />To check you make your framebuffer, create and attach the attachments, then call</p>
+
+<pre><code>var status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+</code></pre>
+
+<p>If the status is <code>FRAMEBUFFER_COMPLETE</code> then that combination of attachments works for that user.<br />Otherwise it does not work and you'll have to do something else like tell the user they are out of luck<br />or fallback to some other method.</p>
+
+<p>If you haven't yet check out <a href="webgl-less-code-more-fun.html">simplifying WebGL with less code more fun</a>.</p>
+
+<div class="webgl_bottombar">
+<h3>The Canvas itself is actually a texture</h3>
+<p>
+This is just trivia but browsers use the techniques above to implement the canvas itself.
+Behind the scenes they create a color texture, a depth buffer, a framebuffer and then they
+bind it as the current framebuffer. You do your rendering which draws into that texture.
+They then use that texture to render your canvas into the web page.
+</p>
+</div>

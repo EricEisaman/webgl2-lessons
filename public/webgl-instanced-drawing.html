@@ -1,0 +1,407 @@
+<p>Title: WebGL2 Optimization - Instanced Drawing<br />Description: Drawing Multiple Instances of the same Object<br />TOC: Instanced Drawing</p>
+
+<p>WebGL has a feature called <em>instanced drawing</em>.<br />It is basically a way to draw more than one of the<br />same thing faster than drawing each thing individually.</p>
+
+<p>First let's make an example that draws multiple instances of the<br />same thing.</p>
+
+<p>Starting with code <em>similar</em> to what we ended up with at<br />the end of <a href="webgl-3d-orthographic.html">the article on orthographic projection</a><br />we start with these 2 shaders</p>
+
+<pre><code>
+const vertexShaderSource = `#version 300 es
+in vec4 a_position;
+uniform mat4 matrix;
+
+out vec4 v_color;
+
+void main() {
+  // Multiply the position by the matrix.
+  gl_Position = matrix * a_position;
+}
+`;
+
+const fragmentShaderSource = `#version 300 es
+precision highp float;
+
+uniform vec4 color;
+
+out vec4 outColor;
+
+void main() {
+  outColor = color;
+}
+`;
+</code></pre>
+
+<p>The vertex shader multiplies each vertex by a single matrix which we<br />covered in <a href="webgl-3d-orthographic.html">that article</a> as it is<br />a fairly flexible arrangement. The fragment shader just uses<br />a color we pass in via a uniform.</p>
+
+<p>To draw we need to compile the shaders, link them together<br />and look up the locations of the attributes and uniforms.</p>
+
+<pre><code>
+const program = webglUtils.createProgramFromSources(gl,
+    [vertexShaderSource, fragmentShaderSource]);
+
+const positionLoc = gl.getAttribLocation(program, 'a_position');
+const colorLoc = gl.getUniformLocation(program, 'color');
+const matrixLoc = gl.getUniformLocation(program, 'matrix');
+</code></pre>
+
+<p>and make a vertex array object to hold attribute state</p>
+
+<pre><code>
+// Create a vertex array object (attribute state)
+const vao = gl.createVertexArray();
+
+// and make it the one we're currently working with
+gl.bindVertexArray(vao);
+</code></pre>
+
+<p>Then we need to supply data for the positions via a buffer.</p>
+
+<pre><code>
+const positionBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    -0.1,  0.4,
+    -0.1, -0.4,
+     0.1, -0.4,
+     0.1, -0.4,
+    -0.1,  0.4,
+     0.1,  0.4,
+     0.4, -0.1,
+    -0.4, -0.1,
+    -0.4,  0.1,
+    -0.4,  0.1,
+     0.4, -0.1,
+     0.4,  0.1,
+  ]), gl.STATIC_DRAW);
+const numVertices = 12;
+
+// setup the position attribute
+gl.enableVertexAttribArray(positionLoc);
+gl.vertexAttribPointer(
+    positionLoc,  // location
+    2,            // size (num values to pull from buffer per iteration)
+    gl.FLOAT,     // type of data in buffer
+    false,        // normalize
+    0,            // stride (0 = compute from size and type above)
+    0,            // offset in buffer
+);
+</code></pre>
+
+<p>Let's draw 5 instances. We'll make 5 matrixes and 5 colors for<br />each instance.</p>
+
+<pre><code>
+const numInstances = 5;
+const matrices = [
+  m4.identity(),
+  m4.identity(),
+  m4.identity(),
+  m4.identity(),
+  m4.identity(),
+];
+
+const colors = [
+  [ 1, 0, 0, 1, ],  // red
+  [ 0, 1, 0, 1, ],  // green
+  [ 0, 0, 1, 1, ],  // blue
+  [ 1, 0, 1, 1, ],  // magenta
+  [ 0, 1, 1, 1, ],  // cyan
+];
+</code></pre>
+
+<p>To draw first we use the shader program, then setup the attribute,<br />and then loop over the 5 instances, computing a new matrix<br />for each one, setting the matrix uniform and color<br />and then drawing.</p>
+
+<pre><code>
+function render(time) {
+  time *= 0.001; // seconds
+
+  webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+  // Tell WebGL how to convert from clip space to pixels
+  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+  gl.useProgram(program);
+
+  // setup all attributes
+  gl.bindVertexArray(vao);
+
+  matrices.forEach((mat, ndx) => {
+    m4.translation(-0.5 + ndx * 0.25, 0, 0, mat);
+    m4.zRotate(mat, time * (0.1 + 0.1 * ndx), mat);
+
+    const color = colors[ndx];
+
+    gl.uniform4fv(colorLoc, color);
+    gl.uniformMatrix4fv(matrixLoc, false, mat);
+
+    gl.drawArrays(
+        gl.TRIANGLES,
+        0,             // offset
+        numVertices,   // num vertices per instance
+    );
+  });
+
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</code></pre>
+
+<p>Note that the matrix math library takes an optional destination<br />matrix at the end of each matrix math function. In most articles we<br />haven't used this feature and just let the library allocate a new<br />matrix for us but this time we want the result to be stored<br />in the matrices we already created.</p>
+
+<p>This works and we get 5 plus symbols of different colors rotating.</p>
+
+<p>{{{example url="../webgl-instanced-drawing-not-instanced.html"}}}</p>
+
+<p>That took 5 calls each to <code>gl.uniform4v</code>, <code>gl.uniformMatrix4fv</code>,<br />and <code>gl.drawArrays</code> for a total of 15 WebGL calls. If our<br />shaders were more complex, like the shaders in<br /><a href="webgl-3d-lighting-spot.html">the article on spot lighting</a><br />we'd have at least 7 calls per object, 6 calls to <code>gl.uniformXXX</code><br />and one call to <code>gl.drawArrays</code>. If we were drawing 400 objects<br />that would be 2800 WebGL calls.</p>
+
+<p>Instancing is a way to reduce those calls. It works by<br />letting you tell WebGL how many times you want the same<br />thing drawn (the number of instances). For each attribute<br />you designate if that attribute will advance to the <em>next value</em><br />from its assigned buffer every time the vertex shader is<br />called (the default), or only every N instances where N is usually<br />1.</p>
+
+<p>So for example instead of supplying <code>matrix</code> and <code>color</code><br />from a uniform, we would instead supply them via <code>attribute</code>s.<br />We'd put the matrix and color for each instance in a buffer,<br />set up the attributes to pull data from those buffers, and<br />tell WebGL, only advance to the next value once per instance.</p>
+
+<p>Let's do it!</p>
+
+<p>First we'll change the shaders to use attributes for <code>matrix</code><br />and <code>color</code> instead of uniforms.</p>
+
+<pre><code>
+const vertexShaderSource = `#version 300 es
+in vec4 a_position;
+-uniform mat4 matrix;
++in vec4 color;
++in mat4 matrix;
++
++out vec4 v_color;
+
+void main() {
+  // Multiply the position by the matrix.
+  gl_Position = matrix * a_position;
+
++  // Pass the vertex color to the fragment shader.
++  v_color = color;
+}
+`;
+</code></pre>
+
+<p>and </p>
+
+<pre><code>
+const fragmentShaderSource = `#version 300 es
+precision highp float;
+
+-uniform vec4 color;
++// Passed in from the vertex shader.
++in vec4 v_color;
+
+void main() {
+-  gl_FragColor = color;
++  gl_FragColor = v_color;
+}
+`;  
+</code></pre>
+
+<p>attributes only work in the vertex shader so we need to<br />get the color from an attribute in the vertex shader<br />and pass it to the fragment shader via a varying.</p>
+
+<p>Next we need to look up the locations of these attributes.</p>
+
+<pre><code>
+const program = webglUtils.createProgramFromSources(gl,
+    [vertexShaderSource, fragmentShaderSource]);
+
+const positionLoc = gl.getAttribLocation(program, 'a_position');
+-const colorLoc = gl.getUniformLocation(program, 'color');
+-const matrixLoc = gl.getUniformLocation(program, 'matrix');
++const colorLoc = gl.getAttribLocation(program, 'color');
++const matrixLoc = gl.getAttribLocation(program, 'matrix');
+</code></pre>
+
+<p>Now, we need a buffer hold the matrices at will get applied<br />to the attribute. Since a buffer is best updated in one<br /><em>chuck</em> we'll put all of our matrices in the same <code>Float32Array</code></p>
+
+<pre><code>
+// setup matrixes, one per instance
+const numInstances = 5;
++// make a typed array with one view per matrix
++const matrixData = new Float32Array(numInstances * 16);
+</code></pre>
+
+<p>We'll then make <code>Float32Array</code> views, one for each matrix.</p>
+
+<pre><code>
+-const matrices = [
+-  m4.identity(),
+-  m4.identity(),
+-  m4.identity(),
+-  m4.identity(),
+-  m4.identity(),
+-];
+const matrices = [];
+for (let i = 0; i < numInstances; ++i) {
+  const byteOffsetToMatrix = i * 16 * 4;
+  const numFloatsForView = 16;
+  matrices.push(new Float32Array(
+      matrixData.buffer,
+      byteOffsetToMatrix,
+      numFloatsForView));
+}
+</code></pre>
+
+<p>This way when we want to reference the data for all the matrixes<br />we can use <code>matrixData</code> but when we want any individual matrix<br />we can use <code>matrices[ndx]</code>.</p>
+
+<p>We also need to create a buffer on the GPU for this data.<br />We only need to allocate the buffer at this point, we don't<br />need to supply data so the 2nd parameter to <code>gl.bufferData</code><br />is a size which just allocates the buffer.</p>
+
+<pre><code>
+const matrixBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
+// just allocate the buffer
+gl.bufferData(gl.ARRAY_BUFFER, matrixData.byteLength, gl.DYNAMIC_DRAW);
+</code></pre>
+
+<p>Notice we passed <code>gl.DYNAMIC_DRAW</code> as the last parameter. This is a <em>hint</em><br />to WebGL that we're going to change this data often.</p>
+
+<p>Now we need to set up the attributes for the matrices.<br />The matrix attribute is a <code>mat4</code>. A <code>mat4</code> actually uses<br />4 consecutive attribute slots.</p>
+
+<pre><code>
+const bytesPerMatrix = 4 * 16;
+for (let i = 0; i < 4; ++i) {
+  const loc = matrixLoc + i;
+  gl.enableVertexAttribArray(loc);
+  // note the stride and offset
+  const offset = i * 16;  // 4 floats per row, 4 bytes per float
+  gl.vertexAttribPointer(
+      loc,              // location
+      4,                // size (num values to pull from buffer per iteration)
+      gl.FLOAT,         // type of data in buffer
+      false,            // normalize
+      bytesPerMatrix,   // stride, num bytes to advance to get to next set of values
+      offset,           // offset in buffer
+  );
+  // this line says this attribute only changes for each 1 instance
+  gl.vertexAttribDivisor(loc, 1);
+}
+</code></pre>
+
+<p>The most important point relative to instanced drawing is<br />the call to <code>gl.vertexAttribDivisor</code>. It sets this<br />attribute to only advance to the next value once per instance.<br />This means the <code>matrix</code> attributes will use the first matrix for<br />every vertex for the first instance, the second matrix for the<br />second instance and so on.</p>
+
+<p>Next we need our colors also in a buffer. This data will not<br />be changing, at least in this example, so we'll just upload<br />the data.</p>
+
+<pre><code>
+-const colors = [
+-  [ 1, 0, 0, 1, ],  // red
+-  [ 0, 1, 0, 1, ],  // green
+-  [ 0, 0, 1, 1, ],  // blue
+-  [ 1, 0, 1, 1, ],  // magenta
+-  [ 0, 1, 1, 1, ],  // cyan
+-];
++// setup colors, one per instance
++const colorBuffer = gl.createBuffer();
++gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
++gl.bufferData(gl.ARRAY_BUFFER,
++    new Float32Array([
++        1, 0, 0, 1,  // red
++        0, 1, 0, 1,  // green
++        0, 0, 1, 1,  // blue
++        1, 0, 1, 1,  // magenta
++        0, 1, 1, 1,  // cyan
++      ]),
++    gl.STATIC_DRAW);
+</code></pre>
+
+<p>We also need to setup the color attribute</p>
+
+<pre><code>
+// set attribute for color
+gl.enableVertexAttribArray(colorLoc);
+gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 0, 0);
+// this line says this attribute only changes for each 1 instance
+gl.vertexAttribDivisor(colorLoc, 1);
+</code></pre>
+
+<p>At draw time instead of looping over each instance,<br />setting the matrix and color uniforms, and then calling draw<br />we'll first compute the matrix for each instance.</p>
+
+<pre><code>
+// update all the matrices
+matrices.forEach((mat, ndx) => {
+  m4.translation(-0.5 + ndx * 0.25, 0, 0, mat);
+  m4.zRotate(mat, time * (0.1 + 0.1 * ndx), mat);
+
+-  const color = colors[ndx];
+-
+-  gl.uniform4fv(colorLoc, color);
+-  gl.uniformMatrix4fv(matrixLoc, false, mat);
+-
+-  gl.drawArrays(
+-      gl.TRIANGLES,
+-      0,             // offset
+-      numVertices,   // num vertices per instance
+-  );
+});
+</code></pre>
+
+<p>Because our matrix library takes an optional destination matrix<br />and because our matrices are just <code>Float32Array</code> views into<br />the same larger <code>Float32Array</code>, when we're done all the matrix<br />data is ready to upload to the GPU directly.</p>
+
+<pre><code>
+// upload the new matrix data
+gl.bindBuffer(gl.ARRAY_BUFFER, matrixBuffer);
+gl.bufferSubData(gl.ARRAY_BUFFER, 0, matrixData);
+</code></pre>
+
+<p>Finally we can draw all instances in a single draw call.</p>
+
+<pre><code>
+gl.drawArraysInstanced(
+  gl.TRIANGLES,
+  0,             // offset
+  numVertices,   // num vertices per instance
+  numInstances,  // num instances
+);
+</code></pre>
+
+<p>{{{example url="../webgl-instanced-drawing.html"}}}</p>
+
+<p>In the example above we had 3 WebGL calls per shape * 5 shapes<br />which were 15 calls total. We now have just 2 calls for all 5 shapes,<br />one to upload the matrices, another to draw.</p>
+
+<p>I feel like this should go without saying but I then again maybe<br />it's only obvious to me because I've done this too much. The code<br />above does not take into account the aspect of the canvas.<br />It does not use a <a href="webgl-3d-orthographic.html">projection matrix</a><br />or a <a href="webgl-3d-camera.html">view matrix</a>. It was meant only<br />to demonstrate instanced drawing. If you wanted a projection and/or<br />a view matrix we could add the calculation to JavaScript. That would<br />mean more work for JavaScript. The more obvious way would be to add<br />one or two more uniforms to the vertex shader.</p>
+
+<pre><code>
+const vertexShaderSource = `#version 300 es
+in vec4 a_position;
+in vec4 color;
+in mat4 matrix;
++uniform mat4 projection;
++uniform mat4 view;
+
+out vec4 v_color;
+
+void main() {
+  // Multiply the position by the matrix.
+-  gl_Position = matrix * a_position;
++  gl_Position = projection * view * matrix * a_position;
+
+  // Pass the vertex color to the fragment shader.
+  v_color = color;
+}
+`;
+</code></pre>
+
+<p>and then look up their locations at init time</p>
+
+<pre><code>
+const positionLoc = gl.getAttribLocation(program, 'a_position');
+const colorLoc = gl.getAttribLocation(program, 'color');
+const matrixLoc = gl.getAttribLocation(program, 'matrix');
++const projectionLoc = gl.getUniformLocation(program, 'projection');
++const viewLoc = gl.getUniformLocation(program, 'view');
+</code></pre>
+
+<p>and set them appropriately at render time.</p>
+
+<pre><code>
+gl.useProgram(program);
+
++// set the view and projection matrices since
++// they are shared by all instances
++const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
++gl.uniformMatrix4fv(projectionLoc, false,
++    m4.orthographic(-aspect, aspect, -1, 1, -1, 1));
++gl.uniformMatrix4fv(viewLoc, false, m4.zRotation(time * .1));
+</code></pre>
+
+<p>{{{example url="../webgl-instanced-drawing-projection-view.html"}}}</p>

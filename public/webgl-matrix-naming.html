@@ -1,0 +1,46 @@
+<p>Title: WebGL Matrix Naming<br />Description: Common names for matrices<br />TOC: 3D - Matrix Naming</p>
+
+<p>This post is a continuation of a series of posts about WebGL. The first<br /><a href="webgl-fundamentals.html">started with fundamentals</a> and the previous<br />was <a href="webgl-3d-camera.html">about 3d cameras</a>.</p>
+
+<p>As the entire site has pointed out pretty much everything about WebGL is<br />100% up to you. Except for a few pre-defined names like <code>gl_Position</code><br />almost everything about WebGL is defined by you, the programmer.</p>
+
+<p>That said there are some common or semi-common naming conventions. Especially<br />when related to matrices. I don't know who first game up with these names. I<br />think I learned them <a href="https://www.nvidia.com/object/using_sas.html">from NVidia's Standard Annotations and Semantics</a>.<br />That's a little more formal as it was a way to try to make shaders work<br />in more situations by deciding on specific names. It's kind of out of date<br />but the basics are still around.</p>
+
+<p>Here's the list from my head</p>
+
+<ul>
+<li><p>world matrix (or sometimes model matrix)</p>
+
+<p>a matrix that takes the vertices of a model and moves them to world space</p></li>
+<li><p>camera matrix</p>
+
+<p>a matrix that positions the camera in the world. Another way of saying<br />that is it's the <em>world matrix</em> for the camera.</p></li>
+<li><p>view matrix</p>
+
+<p>a matrix that moves everything else in the world in front of the camera.<br />This is the inverse of the <em>camera matrix</em>.</p></li>
+<li><p>projection matrix</p>
+
+<p>a matrix and converts a frustum of space into clip space or some orthographic<br />space into clip space. Another way of thinking about this is it's the matrix<br />returned by your matrix math library's <code>perspective</code> and/or <code>ortho</code> or<br /><code>orthographic</code> function.</p></li>
+<li><p>local matrix</p>
+
+<p>when using <a href="webgl-scene-graph.html">a scene graph</a> the local matrix is the<br />matrix at any particular node on the graph before multiplying with any other<br />nodes.</p></li>
+</ul>
+
+<p>If a shader needs a combination of these they are usually listed right to left<br />even though in the shader they'd be multiplied <em>on the right</em>. For example:</p>
+
+<pre><code>worldViewProjection = projection * view * world
+</code></pre>
+
+<p>The other two common things to do with a matrix are to take the inverse</p>
+
+<pre><code>viewMatrix = inverse(cameraMatrix)
+</code></pre>
+
+<p>And to transpose</p>
+
+<pre><code>worldInverseTranspose = transpose(inverse(world))
+</code></pre>
+
+<p>Hopefully knowing these terms you can look at someone else's shader<br />and if you're lucky they used names that are close to or similar to<br />these ones. Then you can hopefully derive what those shaders are<br />actually doing.</p>
+
+<p>Now let's <a href="webgl-animation.html">learn about animation next</a>.</p>

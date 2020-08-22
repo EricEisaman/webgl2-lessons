@@ -1,0 +1,220 @@
+<p>Title: WebGL Matrices vs Math Matrices<br />Description: The difference between WebGL conventions and Math conventions.<br />TOC: WebGL Matrices vs Math Matrices</p>
+
+<p>This is article is an aside from the the various articles that talk about<br />matrices in particular <a href="webgl-2d-matrices.html">the article that introduces matrices</a> but also<br /><a href="webgl-3d-orthographic.html">the article that introduces 3D</a>, <a href="webgl-3d-perspective.html">the article on perspective projection</a>,<br />and <a href="webgl-3d-camera.html">the article on cameras</a>.</p>
+
+<p>In programming generally a row goes from left to right, a column goes up and down.</p>
+
+<blockquote>
+  <h2>col·umn</h2>
+  
+  <p>/ˈkäləm/</p>
+  
+  <p><em>noun</em><br />1. an upright pillar, typically cylindrical and made of stone or<br /> concrete, supporting an entablature, arch, or other structure or standing alone as a monument.</p>
+  
+  <p><em>synonyms</em>:    pillar, post, pole, upright, vertical, ...</p>
+  
+  <ol>
+  <li>a vertical division of a page or text.</li>
+  </ol>
+  
+  <h2>row</h2>
+  
+  <p>/rō/</p>
+  
+  <p><em>noun</em><br />* a horizontal line of entries in a table.</p>
+</blockquote>
+
+<p>We can see examples in our software. For example my text editors<br />shows Lines and columns, lines being another word for row in this case since column is already taken</p>
+
+<div class="webgl_center"><img src="resources/editor-lines-and-columns.gif" class="gman-border-bshadow" style="width: 372px;"></div>
+
+<p>Notice in the bottom left area the status bar shows the line and column.</p>
+
+<p>In spreadsheet software we see rows go across</p>
+
+<div class="webgl_center"><img src="resources/spreadsheet-row.png" style="width: 808px; filter: brightness(0.9);" class="nobg"></div>
+
+<p>And columns go down.</p>
+
+<div class="webgl_center"><img src="resources/spreadsheet-column.png" style="width: 808px; filter: brightness(0.9);" class="nobg"></div>
+
+<p>So, when we make a 3x3 of 4x4 matrix in JavaScript for WebGL we make them like this</p>
+
+<pre><code>
+const m3x3 = [
+  0, 1, 2,  // row 0
+  3, 4, 5,  // row 1
+  6, 7, 8,  // row 2
+];
+
+const m4x4 = [
+   0,  1,  2,  3,  // row 0 
+   4,  5,  6,  7,  // row 1
+   8,  9, 10, 11,  // row 2
+  12, 13, 14, 15,  // row 3
+];
+</code></pre>
+
+<p>Clearly following the conventions above the first row of <code>m3x3</code> is <code>0, 1, 2</code> and the last row of <code>m4x4</code> is <code>12, 13, 14, 15</code></p>
+
+<p>As we see in <a href="webgl-2d-matrices.html">the first article on matrices</a> to make a fairly standard WebGL 3x3 2D translation matrix the translation values <code>ty</code> and <code>ty</code> go in locations 6 and 7</p>
+
+<pre><code>
+const some3x3TranslationMatrix = [
+   1,  0,  0,
+   0,  1,  0,
+  tx, ty,  1,
+];
+</code></pre>
+
+<p>or for a 4x4 matrix which is introduced in <a href="webgl-3d-orthographic.html">the first article on 3D</a> the translation goes in locations 12, 13, 14 as in</p>
+
+<pre><code>
+const some4x4TranslationMatrix = [
+   1,  0,  0,  0,
+   0,  1,  0,  0,
+   0,  0,  1,  0,
+  tx, ty, tz,  1,
+];
+</code></pre>
+
+<p>But, there's an issue. Math conventions for matrix math generally do things in columns. A mathematician would write out a 3x3 translation matrix like this</p>
+
+<div class="webgl_center"><img src="resources/3x3-math-translation-matrix.svg" style="width: 120px;"></div>
+
+<p>and a 4x4 translation matrix like this</p>
+
+<div class="webgl_center"><img src="resources/4x4-math-translation-matrix.svg" style="width: 150px;"></div>
+
+<p>That leaves us with a problem. If we want our matrices to look like<br />math matrices we might decide to write a 4x4 matrix like this</p>
+
+<pre><code>
+const some4x4TranslationMatrix = [
+   1,  0,  0,  tx,
+   0,  1,  0,  ty,
+   0,  0,  1,  tx,
+   0,  0,  0,  1,
+];
+</code></pre>
+
+<p>Unfortunately doing it like that has issues. As mentioned in <a href="webgl-3d-camera.html">the article on cameras</a> each of the columns of a 4x4 matrix often has a meaning</p>
+
+<p>The first, second, and third columns are often considered the x, y, and z axis respectively and the last column is the position or translation.</p>
+
+<p>One issue is in code it would be no fun to try to get those parts<br />separately. Want the Z axis? You'd have to do this</p>
+
+<pre><code>
+const zAxis = [
+  some4x4Matrix[2],
+  some4x4Matrix[6],
+  some4x4Matrix[10],
+];
+</code></pre>
+
+<p>Ugh!</p>
+
+<p>So, the way WebGL, and OpenGL ES on which WebGL is based, gets around this is it calls rows "columns".</p>
+
+<pre><code>
+const some4x4TranslationMatrix = [
+   1,  0,  0,  0,   // this is column 0
+   0,  1,  0,  0,   // this is column 1
+   0,  0,  1,  0,   // this is column 2
+  tx, ty, tz,  1,   // this is column 3
+];
+</code></pre>
+
+<p>Now it matches the math definition. Comparing to the example above, if we want the Z axis all we need to do is</p>
+
+<pre><code>
+const zAxis = some4x4Matrix.slice(9, 11);
+</code></pre>
+
+<p>For those familiar with C++, OpenGL itself requires the 16 values of a 4x4 matrix to be consecutive in memory so in C++ we could create a <code>Vec4</code> struct or class</p>
+
+<div class="highlight"><pre lang="c++">// C++
+struct Vec4 {
+  float x;
+  float y;
+  float z;
+  float w;
+};
+</pre></div>
+
+<p>and we could create a matrix4x4 from 4 of them</p>
+
+<div class="highlight"><pre lang="c++">// C++
+struct Mat4x4 {
+  Vec4 x_axis;
+  Vec4 y_axis;
+  Vec4 z_axis;
+  Vec4 translation;
+}
+</pre></div>
+
+<p>or just</p>
+
+<div class="highlight"><pre lang="c++">// C++
+struct Mat4x4 {
+  Vec4 column[4];
+}
+</pre></div>
+
+<p>And it would just appear to work. </p>
+
+<p>Unfortunately it looks nothing like the math version when you actually declare one statically in code.</p>
+
+<div class="highlight"><pre lang="C++">// C++
+Mat4x4 someTranslationMatrix = {
+  {  1,  0,  0,  0, },
+  {  0,  1,  0,  0, },
+  {  0,  0,  1,  0, },
+  { tx, ty, tz,  1, },
+};
+</pre></div>
+
+<p>Or back to JavaScript where we don't generally have something like C++ structs.</p>
+
+<pre><code>
+const someTranslationMatrix = [
+   1,  0,  0,  0,
+   0,  1,  0,  0,
+   0,  0,  1,  0,
+  tx, ty, tz,  1,
+];
+</code></pre>
+
+<p>So, with this convention of calling rows "columns" some things are simpler but others can me more confusing if you're a math person.</p>
+
+<p>I bring all of this up because these article are written from the POV of a programmer, not a math person. That means like every other single dimensional array that is treated as a 2 dimensional array, rows go across.</p>
+
+<pre><code>
+const someTranslationMatrix = [
+   1,  0,  0,  0,  // row 0
+   0,  1,  0,  0,  // row 1
+   0,  0,  1,  0,  // row 2
+  tx, ty, tz,  1,  // row 3
+];
+</code></pre>
+
+<p>just like</p>
+
+<pre><code>
+// happy face image
+const dataFor7x8OneChannelImage = [
+    0, 255, 255, 255, 255, 255,   0,  // row 0
+  255,   0,   0,   0,   0,   0, 255,  // row 1
+  255,   0, 255,   0, 255,   0, 255,  // row 2
+  255,   0,   0,   0,   0,   0, 255,  // row 3
+  255,   0, 255,   0, 255,   0, 255,  // row 4
+  255,   0, 255, 255, 255,   0, 255,  // row 5
+  255,   0,   0,   0,   0,   0, 255,  // row 6
+    0, 255, 255, 255, 255, 255,   0,  // row 7
+]
+</code></pre>
+
+<p>and so these articles will refer to them as rows.</p>
+
+<p>If you're a math person you might find it confusing. I'm sorry I<br />don't have a solution. I could call what is clearly row 3 a column<br />but that would also be confusing since it matches no other programming.</p>
+
+<p>In any case, hopefully this helps clarify why none of the explanations look like something from a math book. Instead they look like code and use the conventions of code. I hope this helps explain what's going on<br />and it's not too confusing for those who are used to math conventions.</p>

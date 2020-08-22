@@ -1,0 +1,27 @@
+<p>Title: WebGL2 readPixels<br />Description: Details on readPixels<br />TOC: readPixels</p>
+
+<p>In WebGL you pass a format/type pair to <code>readPixels</code>. For a given<br />texture internal format (attached to a framebuffer), only 2 combinations<br />of format/type are valid.</p>
+
+<p>From the spec:</p>
+
+<blockquote>
+  <p>For normalized fixed-point rendering surfaces, the combination format <code>RGBA</code> and type<br /><code>UNSIGNED_BYTE</code> is accepted. For signed integer rendering surfaces, the combination<br />format <code>RGBA_INTEGER</code> and type <code>INT</code> is accepted. For unsigned integer<br />rendering surfaces, the combination format <code>RGBA_INTEGER</code> and type <code>UNSIGNED_INT</code><br />is accepted.</p>
+</blockquote>
+
+<p>The second combination is implementation defined<br /><span style="color:red;">which probably means you shouldn't use it in WebGL if you want your code to be portable</span>.<br />You can ask what the format/type combination is by querying</p>
+
+<pre><code>
+// assuming a framebuffer is bound with the texture to read attached
+const format = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT);
+const type = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE);
+</code></pre>
+
+<p>Also note what texture formats that are renderable, meaning you can attach them to a framebuffer and render to them,<br />are also somewhat implementation defined. <br />WebGL2 lists <a href="webgl-data-textures.html">many formats</a> but some are optional (<code>LUMINANCE</code> for example) and some<br />are not renderable by default but can maybe be made renderable by extension. (<code>RGBA32F</code> for example).</p>
+
+<p><strong>The table below is live</strong>. You may notice that it gives different results depending on the machine, OS, GPU, or even<br />browser. I know on my machine Chrome and Firefox give different results for some of the implementation defined values.</p>
+
+<div class="webgl_center" data-diagram="formats"></div>
+
+<script src="../resources/twgl-full.min.js"></script>
+
+<script src="resources/webgl-readpixels.js"></script>

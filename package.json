@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "4.16.3",
+    "gh-markdown-cli": "^0.2.0"
+  }
+}

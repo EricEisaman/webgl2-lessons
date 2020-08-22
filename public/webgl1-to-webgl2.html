@@ -1,0 +1,413 @@
+<p>Title: WebGL2 from WebGL1<br />Description: How to move from WebGL1 to WebGL2<br />TOC: Moving from WebGL1 to WebGL2</p>
+
+<p>WebGL2 is <strong>nearly</strong> 100% backward compatible with WebGL1.<br />If you only use WebGL1 features then then there are<br />only 2 <strong>major</strong> differences.</p>
+
+<ol>
+<li><p>You use <code>"webgl2"</code> instead of <code>"webgl"</code> when calling <code>getContext</code></p>
+
+<pre><code>var gl = someCanvas.getContext("webgl2");
+</code></pre>
+
+<p>Note: there is no "experimental-webgl2". The browser vendors got<br />together and decided no more prefixing things because websites<br />get dependent on the prefix.</p></li>
+<li><p>Many extensions are a standard part of WebGL2 and so not available<br />as extensions</p>
+
+<p>For example Vertex Array Objects <code>OES_vertex_array_object</code> is a<br />standard feature of WebGL2. So for example in WebGL1 you'd do this</p>
+
+<pre><code>var ext = gl.getExtension("OES_vertex_array_object");
+if (!ext) {
+  // tell user they don't have the required extension or work around it
+} else {
+  var someVAO = ext.createVertexArrayOES();
+}
+</code></pre>
+
+<p>In WebGL2 you'd do this</p>
+
+<pre><code>var someVAO = gl.createVertexArray();
+</code></pre>
+
+<p>Because it just exists.</p></li>
+</ol>
+
+<p>That being said to take advantage of most WebGL2 features you'll need to make<br />some changes.</p>
+
+<h2>Switch to GLSL 300 es</h2>
+
+<p>The biggest change is you should upgrade your shaders to GLSL 3.00 ES. To do<br />that the first line of your shaders needs to be</p>
+
+<pre><code>#version 300 es
+</code></pre>
+
+<p><strong>NOTE: THIS HAS TO BE THE FIRST LINE! No comments, no blank lines before it allowed.</strong></p>
+
+<p>In other words this is bad</p>
+
+<pre><code>// BAD!!!!                +---There's a new line here!
+// BAD!!!!                V
+var vertexShaderSource = `
+#version 300 es
+..
+`;
+</code></pre>
+
+<p>This is bad too</p>
+
+<pre><code>&lt;!-- BAD!!                   V&lt;- there's a new line here
+&lt;script id="vs" type="notjs"&gt;
+#version 300 es
+...
+&lt;/script&gt;
+</code></pre>
+
+<p>This is good</p>
+
+<pre><code>var vertexShaderSource = `#version 300 es
+...
+`;
+</code></pre>
+
+<p>This is good too</p>
+
+<pre><code>&lt;script id="vs" type="notjs"&gt;#version 300 es
+...
+&lt;/script&gt;
+</code></pre>
+
+<p>Or you could make your shader compiling functions strip<br />the first blank lines.</p>
+
+<h3>Changes in GLSL 300 es from GLSL 100</h3>
+
+<p>There are several changes you'll need to make to your shaders<br />on top of adding the version string above</p>
+
+<h4><code>attribute</code> -> <code>in</code></h4>
+
+<p>In GLSL 100 you might have</p>
+
+<pre><code>attribute vec4 a_position;
+attribute vec2 a_texcoord;
+attribute vec3 a_normal;
+</code></pre>
+
+<p>In GLSL 300 es that becomes</p>
+
+<pre><code>in vec4 a_position;
+in vec2 a_texcoord;
+in vec3 a_normal;
+</code></pre>
+
+<h4><code>varying</code> to <code>in</code> / <code>out</code></h4>
+
+<p>In GLSL 100 you might declare a varying in both the vertex<br />and fragment shaders like this</p>
+
+<pre><code>varying vec2 v_texcoord;
+varying vec3 v_normal;
+</code></pre>
+
+<p>In GLSL 300 es in the vertex shader the varyings become</p>
+
+<pre><code>out vec2 v_texcoord;
+out vec3 v_normal;
+</code></pre>
+
+<p>And in the fragment shader they become</p>
+
+<pre><code>in vec2 v_texcoord;
+in vec3 v_normal;
+</code></pre>
+
+<h4>No more <code>gl_FragColor</code></h4>
+
+<p>In GLSL 100 your fragment shader would set the special<br />variable <code>gl_FragColor</code> to set the output of the shader.</p>
+
+<pre><code>gl_FragColor = vec4(1, 0, 0, 1);  // red
+</code></pre>
+
+<p>In GLSL 300 es you declare your own output variable and<br />then set it.</p>
+
+<pre><code>out vec4 myOutputColor;
+
+void main() {
+   myOutputColor = vec4(1, 0, 0, 1);  // red
+}
+</code></pre>
+
+<p>Note: You can pick any name you want but names can <strong>not</strong> start with<br /><code>gl_</code> so you can't just make <code>out vec4 gl_FragColor</code></p>
+
+<h4><code>texture2D</code> -> <code>texture</code> etc.</h4>
+
+<p>In GLSL 100 you'd get a color from a texture like this</p>
+
+<pre><code>uniform sampler2D u_some2DTexture;
+uniform samplerCube u_someCubeTexture;
+
+...
+
+vec4 color1 = texture2D(u_some2DTexture, ...);
+vec4 color2 = textureCube(u_someCubeTexture, ...);
+</code></pre>
+
+<p>In GLSL 300es the texture functions automatically know<br />what to do based on the sampler type so now it's just<br /><code>texture</code></p>
+
+<pre><code>uniform sampler2D u_some2DTexture;
+uniform samplerCube u_someCubeTexture;
+
+...
+
+vec4 color1 = texture(u_some2DTexture, ...);
+vec4 color2 = texture(u_someCubeTexture, ...);
+</code></pre>
+
+<h2>Features you can take for granted</h2>
+
+<p>In WebGL1 many features were optional extensions. In WebGL2<br />all of the following are standard features</p>
+
+<ul>
+<li>Depth Textures (<a href="https://www.khronos.org/registry/webgl/extensions/WEBGL_depth_texture/">WEBGL_depth_texture</a>)</li>
+<li>Floating Point Textures (<a href="https://www.khronos.org/registry/webgl/extensions/OES_texture_float/">OES_texture_float</a>/<a href="https://www.khronos.org/registry/webgl/extensions/OES_texture_float_linear/">OES_texture_float_linear</a>)</li>
+<li>Half Floating Point Textures (<a href="https://www.khronos.org/registry/webgl/extensions/OES_texture_half_float/">OES_texture_half_float</a>/<a href="https://www.khronos.org/registry/webgl/extensions/OES_texture_half_float_linear/">OES_texture_half_float_linear</a>)</li>
+<li>Vertex Array Objects (<a href="https://www.khronos.org/registry/webgl/extensions/OES_vertex_array_object/">OES_vertex_array_object</a>)</li>
+<li>Standard Derivatives (<a href="https://www.khronos.org/registry/webgl/extensions/OES_standard_derivatives/">OES_standard_derivatives</a>)</li>
+<li>Instanced Drawing (<a href="https://www.khronos.org/registry/webgl/extensions/ANGLE_instanced_arrays/">ANGLE_instanced_arrays</a>)</li>
+<li>UNSIGNED_INT indices (<a href="https://www.khronos.org/registry/webgl/extensions/OES_element_index_uint/">OES_element_index_uint</a>)</li>
+<li>Setting <code>gl_FragDepth</code> (<a href="https://www.khronos.org/registry/webgl/extensions/EXT_frag_depth/">EXT_frag_depth</a>)</li>
+<li>Blend Equation MIN/MAX (<a href="https://www.khronos.org/registry/webgl/extensions/EXT_blend_minmax/">EXT_blend_minmax</a>)</li>
+<li>Direct texture LOD access (<a href="https://www.khronos.org/registry/webgl/extensions/EXT_shader_texture_lod/">EXT_shader_texture_lod</a>)</li>
+<li>Multiple Draw Buffers (<a href="https://www.khronos.org/registry/webgl/extensions/WEBGL_draw_buffers/">WEBGL_draw_buffers</a>)</li>
+<li>Texture access in vertex shaders</li>
+</ul>
+
+<h2>Non-Power of 2 Texture Support</h2>
+
+<p>in WebGL1 textures that were not a power of 2 could not have mips.<br />In WebGL2 that limit is removed. Non-power of 2 texture work exactly<br />the same as power of 2 textures.</p>
+
+<h2>Floating Point Framebuffer Attachments</h2>
+
+<p>In WebGL1 to check for support for rendering to a floating point texture<br />you would first check for and enable the <code>OES_texture_float</code> extension, then<br />you'd create a floating point texture, attach it to a framebuffer, and call<br /><code>gl.checkFramebufferStatus</code> to see if it returned <code>gl.FRAMEBUFFER_COMPLETE</code>.</p>
+
+<p>In WebGL2 you need to check for and enable <code>EXT_color_buffer_float</code> or else<br /><code>gl.checkFramebufferStatus</code> will never return <code>gl.FRAMEBUFFER_COMPLETE</code> for<br />a floating point texture.</p>
+
+<p>Note that this is also true for <code>HALF_FLOAT</code> framebuffer attachments as well.</p>
+
+<blockquote>
+  <p>If you're curious this was a <em>bug</em> in the WebLG1 spec. What happened is WebGL1<br />shipped and <code>OES_texture_float</code> was added and it was just assumed the correct<br />way to use it for rendering was to create a texture, attach it a framebuffer,<br />and check its status. Later someone pointed out according the spec that was<br />not enough because the spec says colors written in a fragment shader are<br />always clamped to 0 to 1. <code>EXT_color_buffer_float</code> removes that clamping<br />restriction but since WebGL had already been shipping for a year or so<br />it would have broken many web sites to enforce the restriction. For WebGL2<br />they were able to fix it and so now you must enable <code>EXT_color_buffer_float</code><br />to use floating point textures as framebuffer attachments.</p>
+  
+  <p>NOTE that AFAIK, as of March 2017 very few mobile devices support rendering to<br />floating point textures.</p>
+</blockquote>
+
+<h2>Vertex Array Objects</h2>
+
+<p>Of all the features above the one feature I personally think you should<br />always ALWAYS use is vertex array objects. Everything else it really<br />depends on what you're trying to do but vertex array objects in particular<br />seem like a basic feature that should always be used.</p>
+
+<p>In WebGL1 without vertex array objects all the data about attributes<br />was global WebGL state. You can imagine it like this</p>
+
+<pre><code>var glState = {
+  attributeState: {
+    ELEMENT_ARRAY_BUFFER: null,
+    attributes: [
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+      { enable: ?, size: ?, type: ?, normalize: ?, stride: ?, offset: ?, buffer: ?, },
+    ],
+  },
+</code></pre>
+
+<p>}</p>
+
+<p>Calling functions like <code>gl.vertexAttribPointer</code>, <code>gl.enableVertexAttribArray</code>, and<br /><code>gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ??)</code> would effect that global state.<br />Before each thing you wanted to draw you needed to setup all the attributes and if you<br />were drawing indexed data you needed to set the <code>ELEMENT_ARRAY_BUFFER</code>.</p>
+
+<p>With Vertex Array Objects that entire <code>attributeState</code> above becomes a <em>Vertex Array</em>.</p>
+
+<p>In other words</p>
+
+<pre><code>var someVAO = gl.createVertexArray();
+</code></pre>
+
+<p>Makes a new instance of the thing above called <code>attributeState</code>.</p>
+
+<pre><code>gl.bindVertexArray(someVAO);
+</code></pre>
+
+<p>Is equivalent to</p>
+
+<pre><code>glState.attributeState = someVAO;
+</code></pre>
+
+<p>What that means is you should setup all of your attributes at init time now.</p>
+
+<pre><code>// at init time
+for each model / geometry / ...
+  var vao = gl.createVertexArray()
+  gl.bindVertexArray(vao);
+  for each attribute
+    gl.enableVertexAttribArray(...);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufferForAttribute);
+    gl.vertexAttribPointer(...);
+  if indexed geometry
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+  gl.bindVertexArray(null);
+</code></pre>
+
+<p>Then at render time to use a particular geometry all you need to do<br />is</p>
+
+<pre><code>gl.bindVertexArray(vaoForGeometry);
+</code></pre>
+
+<p>In WebGL1 the init loop above would have appeared at render time.<br />This is a HUGE speed up!</p>
+
+<p>There are a few caveats though:</p>
+
+<ol>
+<li><p>attribute locations are program dependent.</p>
+
+<p>If you're going to use the same geometry with multiple<br />programs consider manually assigning attribute locations.<br />In GLSL 300 es you can do this in the shader</p>
+
+<p>For example:</p>
+
+<pre><code>layout(location = 0) in vec4 a_position;
+layout(location = 1) in vec2 a_texcoord;
+layout(location = 2) in vec3 a_normal;
+layout(location = 3) in vec4 a_color;
+</code></pre>
+
+<p>Sets the locations of the 4 attributes.</p>
+
+<p>You can also still do it the WebGL1 way by calling<br /><code>gl.bindAttribLocation</code> before calling <code>gl.linkProgram</code>.</p>
+
+<p>For example:</p>
+
+<pre><code>gl.bindAttribLocation(someProgram, 0, "a_position");
+gl.bindAttribLocation(someProgram, 1, "a_texcoord");
+gl.bindAttribLocation(someProgram, 2, "a_normal");
+gl.bindAttribLocation(someProgram, 3, "a_color");
+</code></pre>
+
+<p>This means you can force them to be compatible across multiple shader<br />programs. If one program doesn't need all attributes<br />the attributes they do need will still be assigned to<br />the same locations</p>
+
+<p>If you don't do this you'll need different VAOs for<br />different shader programs when using same geometry OR<br />you'll need to just do the WebGL1 thing and not use<br />VAOs and always setup attributes at render time which is slow.</p>
+
+<p>NOTE: of the 2 methods above I'm leaning toward using<br /><code>gl.bindAttribLocation</code> because it's easy to have it in one<br />place in my code where as the method of using <code>layout(location = ?)</code> has<br />to be in all shaders so in the interest of D.R.Y. <code>gl.bindAttribLocation</code><br />seems better. Maybe if I was using a shader generator then there'd be no difference.</p></li>
+<li><p>Always unbind the VAO when you're done</p>
+
+<pre><code>gl.bindVertexArray(null);
+</code></pre>
+
+<p>This just comes from my own experience. If you look above<br />the <code>ELEMENT_ARRAY_BUFFER</code> state is part of a Vertex Array.</p>
+
+<p>So, I ran into this issue. I created some geometry, then<br />I created a VAO for that geometry and set up the attributes<br />and <code>ELEMENT_ARRAY_BUFFER</code>. I then created some more<br />geometry. When that geometry setup its indices, because<br />I still had the previous VAO bound setting up the indices<br />effected the <code>ELEMENT_ARRAY_BUFFER</code> binding for the previous<br />VAO. It took me several hours to debug.</p>
+
+<p>So, my suggestion is never leave a VAO bound if you're done<br />with it. Either immediately bind the next VAO you're going<br />to use or if you're done bind <code>null</code></p></li>
+</ol>
+
+<p>As mentioned at the top many extensions from WebGL1 are standard features<br />of WebGL2 so if you were using extensions in WebGL1 you'll need to<br />change your code to use them not as extensions in WebGL2. See below.</p>
+
+<p>Two that need special care though</p>
+
+<ol>
+<li><p><code>OES_texture_float</code> and floating point textures.</p>
+
+<p>Floating point textures are a standard feature of WebGL2 but</p>
+
+<ul><li><p>Being able to filter floating point textures is still an extension, <code>OES_texture_float_linear</code></p></li>
+<li><p>Being able to render to a floating point texture is an extension, <code>EXT_color_buffer_float</code></p></li>
+<li><p>Creating a floating point texture is different. You must use one of the new WebGL2 internal<br />formats like <code>RGBA32F</code>, <code>R32F</code> etc. This is different than the WebGL1 <code>OES_texture_float</code><br />extension in which the internal format was inferred from the <code>type</code> passed to <code>texImage2D</code></p></li></ul></li>
+<li><p><code>WEBGL_depth_texture</code> and depth textures</p>
+
+<p>Similar to the previous difference, to create a depth texture in WebGL2 you must use one of<br />WebGL2's internal formats<code>DEPTH_COMPONENT16</code>, <code>DEPTH_COMPONENT24</code>,<br /><code>DEPTH_COMPONENT32F</code>, <code>DEPTH24_STENCIL8</code>, or <code>DEPTH32F_STENCIL8</code> where as in the WebGL1<br /><code>WEBGL_depth_texture</code> extension used <code>DEPTH_COMPONENT</code> and <code>DEPTH_STENCIL_COMPONENT</code></p></li>
+</ol>
+
+<p>That's my personal short list of things to be aware of when switching<br />from WebGL1 to WebGL2. <a href="webgl2-whats-new.html">There's even more stuff you can do in WebGL2 though</a>.</p>
+
+<div class="webgl_bottombar">
+<h3>Making WebGL1 extensions look like WebGL2</h3>
+<p>Functions that were on extensions in WebGL1 are now on the main
+context in WebGL2. For example in WebGL</p>
+<pre class="prettyprint">
+var ext = gl.getExtension("OES_vertex_array_object");
+if (!ext) {
+  // tell user they don't have the required extension or work around it
+} else {
+  var someVAO = ext.createVertexArrayOES();
+}
+</pre>
+<p>
+vs in webgl2
+</p>
+<pre class="prettyprint">
+var someVAO = gl.createVertexArray();
+</pre>
+<p>As you can see if you want your code to run in both WebGL1 and WebGL2
+that can present some challenges.</p>
+<p>One workaround would be to copy WebGL1 extensions to the WebGL context at init time.
+That way the rest of your code can stay the same. Example:</p>
+<pre class="prettyprint">
+const gl = someCanvas.getContext("webgl");
+const haveVAOs = getAndApplyExtension(gl, "OES_vertex_array_object");
+
+function getAndApplyExtension(gl, name) {
+  const ext = gl.getExtension(name);
+  if (!ext) {
+    return null;
+  }
+  const fnSuffix = name.split("_")[0];
+  const enumSuffix = '_' + fnSuffix;
+  for (const key in ext) {
+    const value = ext[key];
+    const isFunc = typeof (value) === 'function';
+    const suffix = isFunc ? fnSuffix : enumSuffix;
+    let name = key;
+    // examples of where this is not true are WEBGL_compressed_texture_s3tc
+    // and WEBGL_compressed_texture_pvrtc
+    if (key.endsWith(suffix)) {
+      name = key.substring(0, key.length - suffix.length);
+    }
+    if (gl[name] !== undefined) {
+      if (!isFunc && gl[name] !== value) {
+        console.warn("conflict:", name, gl[name], value, key);
+      }
+    } else {
+      if (isFunc) {
+        gl[name] = function(origFn) {
+          return function() {
+            return origFn.apply(ext, arguments);
+          };
+        }(value);
+      } else {
+        gl[name] = value;
+      }
+    }
+  }
+  return ext;
+}
+</pre>
+<p>Now your code can mostly just work the same on both. Example:</p>
+<pre class="prettyprint">
+if (haveVAOs) {
+  var someVAO = gl.createVertexArray();
+  ...
+} else {
+  ... do whatever for no VAOs.
+}
+</pre>
+<p>The alternative would be having to do something like this</p>
+<pre class="prettyprint">
+if (haveVAOs) {
+  if (isWebGL2)
+     someVAO = gl.createVertexArray();
+  } else {
+     someVAO = vaoExt.createVertexArrayOES();
+  }
+  ...
+} else {
+  ... do whatever for no VAOs.
+}
+</pre>
+<p>Note: In the case of Vertex Array Objects in particular I suggest you <a href="https://github.com/greggman/oes-vertex-array-object-polyfill">use a polyfill</a>
+so you'll have them everywhere. VAOs are available on most systems. Those few system
+where they aren't available the polyfill will handle for you and your code
+can stay simple.</p>
+</div>
