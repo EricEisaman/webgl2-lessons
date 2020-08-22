@@ -1,0 +1,68 @@
+<p>Title: Differences from WebGLFundamentals.org<br />Description: The differences between WebGLFundamentals.org and WebGL2Fundamentals.org<br />TOC: Differences from WebGLFundamentals.org to WebGL2Fundamentals.org</p>
+
+<p>If you previously read <a href="https://webglfundamentals.org">webglfundamentals.org</a><br />there are some differences that you should be aware of.</p>
+
+<h2>Multiline Template Literals</h2>
+
+<p>On webglfundamentals.org nearly all scripts are stored<br />in non-javascript <code>&lt;script&gt;</code> tags.</p>
+
+<pre><code>&lt;script id="vertexshader" type="not-js"&gt;;
+shader
+goes
+here
+&lt;/script&gt;;
+
+...
+
+var vertexShaderSource = document.querySelector("#vertexshader").text;
+</code></pre>
+
+<p>On webgl2fundamentals.org I've switched to using<br />multiline template literals</p>
+
+<pre><code>var vertexShaderSource = `
+shader
+goes
+here
+`;
+</code></pre>
+
+<p>multiline template literals are supported on all WebGL capable<br />browsers except IE11. If you need to target IE11 consider using a<br />transpiler like <a href="https://babeljs.io">babel</a>.</p>
+
+<h2>All Shaders use version GLSL 300 es</h2>
+
+<p>I switched all the shaders to GLSL 300 es. I figured What's the point<br />of using WebGL2 if you're not going to use WebGL2 shaders.</p>
+
+<h2>All examples use Vertex Array Objects</h2>
+
+<p>Vertex Array Objects are an optional feature on WebGL1 but<br />they are a standard feature of WebGL2. <a href="webgl1-to-webgl2.html#Vertex-Array-Objects">I think they should<br />be used everywhere</a>.<br />In fact I almost think I should go back<br />to webglfundamentals.org and use them everywhere <a href="https://github.com/greggman/oes-vertex-array-object-polyfill">using<br />a polyfill</a><br />for those few places they are not available. There is arguably zero<br />downside and your code gets easier and more efficient in almost<br />all cases.</p>
+
+<h2>Other minor changes</h2>
+
+<ul>
+<li><p>I tried to re-structure many samples slightly to show the most common patterns</p>
+
+<p>For example most apps generally set global WebGL state like blending, culling, depth testing<br />in their render loop since those settings often change several time where as on<br />webglfundamentals.org I set them at init time because they only needed to be<br />set once but that's not a common pattern.</p></li>
+<li><p>I set the viewport in all samples</p>
+
+<p>I left this out in webglfundamentals.org because the samples<br />don't actually need it but it's needed in just about all real world code.</p></li>
+<li><p>I removed jquery.</p>
+
+<p>Back when I started it was maybe still not common to<br />support <code>&lt;input type="range"&gt;</code> but now it's supported<br />everywhere.</p></li>
+<li><p>I made all helper functions have a prefix</p>
+
+<p>code like</p>
+
+<p>var program = createProgramFromScripts(...)</p>
+
+<p>is now</p>
+
+<p>webglUtils.createProgramFromSources(...);</p>
+
+<p>I hope this makes it more clear what those functions<br />are and where to find them.</p></li>
+</ul>
+
+<h2>What's next</h2>
+
+<p>I'm debating whether or not to change any of the webglfundamentals<br />examples to match. It took a couple of weeks of solid work to edit<br />all the existing examples and articles. I mostly feel within 12 months<br />WebGL1 will be mostly replaced by WebGL2 because all the browsers<br />are on auto update. Firefox and Chrome will ship WebGL2 soon covering<br />a large percentage of users on desktop and Android. If Apple and Microsoft<br />add WebGL2 support to Safari macOS, Safari iOS and Edge respectively<br />then probably the majority of people will be covered<br />and we can all just move on to WebGL2.</p>
+
+<p>Hopefully I'll find time to add more articles.<br />Given the point above, from now on all new articles will be WebGL2 only<br />I think.</p>

@@ -1,0 +1,219 @@
+<p>Title: WebGL Boilerplate<br />Description: Some of the code you need for all WebGL programs<br />TOC: Boilerplate</p>
+
+<p>This is a continuation from <a href="webgl-fundamentals.html">WebGL Fundamentals</a>.<br />WebGL sometimes appears complicated to learn because most lessons<br />go over everything all at once. I'll try to avoid that where possible<br />and break it down into smaller pieces.</p>
+
+<p>One of things that makes WebGL seem complicated is that you have these 2<br />tiny functions, a vertex shader and a fragment shader.  Those two<br />functions run on your GPU which is where all the speed comes from.<br />That's also why they are written in a custom language, a language that<br />matches what a GPU can do.  Those 2 functions need to be compiled and<br />linked.  That process is, 99% of the time, the same in every WebGL<br />program.</p>
+
+<p>Here's the boilerplate code for compiling a shader.</p>
+
+<pre><code>/**
+ * Creates and compiles a shader.
+ *
+ * @param {!WebGLRenderingContext} gl The WebGL Context.
+ * @param {string} shaderSource The GLSL source code for the shader.
+ * @param {number} shaderType The type of shader, VERTEX_SHADER or
+ *     FRAGMENT_SHADER.
+ * @return {!WebGLShader} The shader.
+ */
+function compileShader(gl, shaderSource, shaderType) {
+  // Create the shader object
+  var shader = gl.createShader(shaderType);
+
+  // Set the shader source code.
+  gl.shaderSource(shader, shaderSource);
+
+  // Compile the shader
+  gl.compileShader(shader);
+
+  // Check if it compiled
+  var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+  if (!success) {
+    // Something went wrong during compilation; get the error
+    throw "could not compile shader:" + gl.getShaderInfoLog(shader);
+  }
+
+  return shader;
+}
+</code></pre>
+
+<p>And the boilerplate code for linking 2 shaders into a program</p>
+
+<pre><code>/**
+ * Creates a program from 2 shaders.
+ *
+ * @param {!WebGLRenderingContext) gl The WebGL context.
+ * @param {!WebGLShader} vertexShader A vertex shader.
+ * @param {!WebGLShader} fragmentShader A fragment shader.
+ * @return {!WebGLProgram} A program.
+ */
+function createProgram(gl, vertexShader, fragmentShader) {
+  // create a program.
+  var program = gl.createProgram();
+
+  // attach the shaders.
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+
+  // link the program.
+  gl.linkProgram(program);
+
+  // Check if it linked.
+  var success = gl.getProgramParameter(program, gl.LINK_STATUS);
+  if (!success) {
+      // something went wrong with the link
+      throw ("program filed to link:" + gl.getProgramInfoLog (program));
+  }
+
+  return program;
+};
+</code></pre>
+
+<p>Of course how you decide to handle errors might be different.  Throwing<br />exceptions might not be the best way to handle things.  Still, those few<br />lines of code are pretty much the same in nearly every WebGL program.</p>
+
+<p>Now that multiline template literals are supported in all modern browsers<br />it's my preferred way of storing shaders. I can just do something like</p>
+
+<pre><code>var vertexShaderSource = `#version 300 es
+
+in vec4 a_position;
+uniform mat4 u_matrix;
+
+void main() {
+   gl_Position = u_matrix * a_position;
+}
+`;
+</code></pre>
+
+<p>And have an easy to edit shader. Some older browsers like IE won't like<br />this but first of I'm using WebGL so I don't really care about IE. If I did<br />care and had a non WebGL fallback I'd use some build step with something like<br /><a href="https://babeljs.io/">Babel</a> to convert the code above into something that IE<br />understands.</p>
+
+<p>In the past I liked to to store my shaders in non javascript &lt;script&gt; tags.<br />It also makes them easy to edit so I'd use code like this.</p>
+
+<pre><code>/**
+ * Creates a shader from the content of a script tag.
+ *
+ * @param {!WebGLRenderingContext} gl The WebGL Context.
+ * @param {string} scriptId The id of the script tag.
+ * @param {string} opt_shaderType. The type of shader to create.
+ *     If not passed in will use the type attribute from the
+ *     script tag.
+ * @return {!WebGLShader} A shader.
+ */
+function createShaderFromScript(gl, scriptId, opt_shaderType) {
+  // look up the script tag by id.
+  var shaderScript = document.getElementById(scriptId);
+  if (!shaderScript) {
+    throw("*** Error: unknown script element" + scriptId);
+  }
+
+  // extract the contents of the script tag.
+  var shaderSource = shaderScript.text;
+
+  // If we didn't pass in a type, use the 'type' from
+  // the script tag.
+  if (!opt_shaderType) {
+    if (shaderScript.type == "x-shader/x-vertex") {
+      opt_shaderType = gl.VERTEX_SHADER;
+    } else if (shaderScript.type == "x-shader/x-fragment") {
+      opt_shaderType = gl.FRAGMENT_SHADER;
+    } else if (!opt_shaderType) {
+      throw("*** Error: shader type not set");
+    }
+  }
+
+  return compileShader(gl, shaderSource, opt_shaderType);
+};
+</code></pre>
+
+<p>Now to compile a shader I can just do</p>
+
+<pre><code>var shader = compileShaderFromScript(gl, "someScriptTagId");
+</code></pre>
+
+<p>I'll usually go one step further and make a function to compile two shaders<br />from script tags, attach them to a program and link them.</p>
+
+<pre><code>/**
+ * Creates a program from 2 script tags.
+ *
+ * @param {!WebGLRenderingContext} gl The WebGL Context.
+ * @param {string} vertexShaderId The id of the vertex shader script tag.
+ * @param {string} fragmentShaderId The id of the fragment shader script tag.
+ * @return {!WebGLProgram} A program
+ */
+function createProgramFromScripts(
+    gl, vertexShaderId, fragmentShaderId) {
+  var vertexShader = createShaderFromScriptTag(gl, vertexShaderId, gl.VERTEX_SHADER);
+  var fragmentShader = createShaderFromScriptTag(gl, fragmentShaderId, gl.FRAGMENT_SHADER);
+  return createProgram(gl, vertexShader, fragmentShader);
+}
+</code></pre>
+
+<p>The other piece of code I use in almost every WebGL program is something to<br />resize the canvas. You can see <a href="webgl-resizing-the-canvas.html">how that function is implemented here</a>.</p>
+
+<p>In the case of all the samples these 2 functions are included with</p>
+
+<pre><code>&lt;script src="resources/webgl-utils.js"&gt;&lt;/script&gt;
+</code></pre>
+
+<p>and used like this</p>
+
+<pre><code>var program = webglUtils.createProgramFromScripts(
+  gl, [idOfVertexShaderScript, idOfFragmentShaderScript]);
+
+...
+
+webglUtils.resizeCanvasToMatchDisplaySize(canvas);
+</code></pre>
+
+<p>It seems best not to clutter all the samples with many lines of the same code<br />as they just get in the way of what that specific example is about.</p>
+
+<p>The actual boilerplate API used in most of these samples is</p>
+
+<pre><code>/**
+ * Creates a program from 2 sources.
+ *
+ * @param {WebGLRenderingContext} gl The WebGLRenderingContext
+ *        to use.
+ * @param {string[]} shaderSources Array of sources for the
+ *        shaders. The first is assumed to be the vertex shader,
+ *        the second the fragment shader.
+ * @param {string[]} [opt_attribs] An array of attribs names.
+ *        Locations will be assigned by index if not passed in
+ * @param {number[]} [opt_locations] The locations for the.
+ *        A parallel array to opt_attribs letting you assign locations.
+ * @param {module:webgl-utils.ErrorCallback} opt_errorCallback callback for errors.
+ *        By default it just prints an error to the console
+ *        on error. If you want something else pass an callback.
+ *        It's passed an error message.
+ * @return {WebGLProgram} The created program.
+ * @memberOf module:webgl-utils
+ */
+function createProgramFromSources(gl,
+                                  shaderSources,
+                                  opt_attribs,
+                                  opt_locations,
+                                  opt_errorCallback)
+</code></pre>
+
+<p>where <code>shaderSources</code> is an array of strings containing the GLSL source code.<br />The first string in the array is the vertex shader source. The second is<br />the fragment shader source.</p>
+
+<p>That's most of my minimum set of WebGL boilerplate code.<br /><a href="../resources/webgl-utils.js">You can find <code>webgl-utils.js</code> code here</a>.<br />If you want something slightly more organized check out <a href="https://twgljs.org">TWGL.js</a>.</p>
+
+<p>The rest of what makes WebGL look complicated is setting up all the inputs<br />to your shaders.  See <a href="webgl-how-it-works.html">how it works</a>.</p>
+
+<p>I'd also suggest you read up on <a href="webgl-less-code-more-fun.html">less code more fun</a> and check out <a href="https://twgljs.org">TWGL</a>.</p>
+
+<p>Note while we're add it there are several more scripts for similar reasons</p>
+
+<ul>
+<li><p><a href="../resources/webgl-lessons-ui.js"><code>webgl-lessons-ui.js</code></a></p>
+
+<p>This provides code to setup sliders that have a visible value that updates when you drag the slider.<br />Again I didn't want to clutter all the files with this code so it's in one place.</p></li>
+<li><p><a href="../resources/lessons-helper.js"><code>lessons-helper.js</code></a></p>
+
+<p>This script is not needed except on webgl2fundamentals.org. It helps print error messages to<br />the screen when used inside the live editor among other things.</p></li>
+<li><p><a href="../resources/m3.js"><code>m3.js</code></a></p>
+
+<p>This is a bunch of 2d math functions. They get created started with the first article about<br />matrix math and as they are created they are inline but eventually they're just too much clutter<br />so after few example they are used by including this script.</p></li>
+<li><p><a href="../resources/m4.js"><code>m4.js</code></a></p>
+
+<p>This is a bunch of 3d math functions. They get created started with the first article about 3d<br />and as they are created they are inline but eventually they're just too much clutter so after<br />the 2nd article on 3d they are used by including this script.</p></li>
+</ul>

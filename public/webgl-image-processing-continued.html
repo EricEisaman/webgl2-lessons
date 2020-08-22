@@ -1,0 +1,240 @@
+<p>Title: WebGL Image Processing Continued<br />Description: How to apply multiple image processing techniques to images in WebGL<br />TOC: Image Processing Continued</p>
+
+<p>This article is a continuation of <a href="webgl-image-processing.html">WebGL Image Processing</a>.<br />If you haven't read that I suggest <a href="webgl-image-processing.html">you start there</a>.</p>
+
+<p>The next most obvious question for image processing is how to apply multiple effects?</p>
+
+<p>Well, you could try to generate shaders on the fly. Provide a UI that lets the<br />user select the effects he wants to use then generate a shader that does<br />all of the effects. That might not always be possible though that technique<br />is often used to <a href="https://www.youtube.com/watch?v=cQUn0Zeh-0Q">create effects for real time graphics</a>.</p>
+
+<p>A more flexible way is to use 2 more <em>work</em> textures and<br />render to each texture in turn, ping-ponging back and forth<br />and applying the next effect each time.</p>
+
+<blockquote><pre>Original Image -&gt; [Blur]        -&gt; Texture 1
+Texture 1      -&gt; [Sharpen]     -&gt; Texture 2
+Texture 2      -&gt; [Edge Detect] -&gt; Texture 1
+Texture 1      -&gt; [Blur]        -&gt; Texture 2
+Texture 2      -&gt; [Normal]      -&gt; Canvas</pre></blockquote>
+
+<p>To do this we need to create framebuffers. In WebGL and OpenGL, a Framebuffer<br />is actually a poor name. A WebGL/OpenGL Framebuffer is really just a<br />list of attachments and not actually a buffer of any kind. But, by<br />attaching a texture to a framebuffer we can render into that texture.</p>
+
+<p>First let's turn <a href="webgl-image-processing.html">the old texture creation code</a> into a function</p>
+
+<div class="highlight"><pre lang="">  function createAndSetupTexture(gl) {
+    var texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+<pre><code>// Set up texture so we can render any size image and so we are
+// working with pixels.
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+return texture;
+</code></pre>
+
+  }
+
+  // Create a texture and put the image in it.
+  var originalImageTexture = createAndSetupTexture(gl);
+
+  // Upload the image into the texture.
+  var mipLevel = 0;               // the largest mip
+  var internalFormat = gl.RGBA;   // format we want in the texture
+  var srcFormat = gl.RGBA;        // format of data we are supplying
+  var srcType = gl.UNSIGNED_BYTE  // type of data we are supplying
+  gl.texImage2D(gl.TEXTURE_2D,
+                mipLevel,
+                internalFormat,
+                srcFormat,
+                srcType,
+                image);
+</pre></div>
+
+<p>And now let's use that function to make 2 more textures and attach them to 2 framebuffers.</p>
+
+<div class="highlight"><pre lang="">  // create 2 textures and attach them to framebuffers.
+  var textures = [];
+  var framebuffers = [];
+  for (var ii = 0; ii < 2; ++ii) {
+    var texture = createAndSetupTexture(gl);
+    textures.push(texture);
+
+<pre><code>// make the texture the same size as the image
+var mipLevel = 0;               // the largest mip
+var internalFormat = gl.RGBA;   // format we want in the texture
+var border = 0;                 // must be 0
+var srcFormat = gl.RGBA;        // format of data we are supplying
+var srcType = gl.UNSIGNED_BYTE  // type of data we are supplying
+var data = null;                // no data = create a blank texture
+gl.texImage2D(
+    gl.TEXTURE_2D, mipLevel, internalFormat, image.width, image.height, border,
+    srcFormat, srcType, data);
+
+// Create a framebuffer
+var fbo = gl.createFramebuffer();
+framebuffers.push(fbo);
+gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+// Attach a texture to it.
+var attachmentPoint = gl.COLOR_ATTACHMENT0;
+gl.framebufferTexture2D(
+    gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, texture, mipLevel);
+</code></pre>
+
+  }
+</pre></div>
+
+<p>Now let's make a set of kernels and then a list of them to apply.</p>
+
+<div class="highlight"><pre lang="">  // Define several convolution kernels
+  var kernels = {
+    normal: [
+      0, 0, 0,
+      0, 1, 0,
+      0, 0, 0
+    ],
+    gaussianBlur: [
+      0.045, 0.122, 0.045,
+      0.122, 0.332, 0.122,
+      0.045, 0.122, 0.045
+    ],
+    unsharpen: [
+      -1, -1, -1,
+      -1,  9, -1,
+      -1, -1, -1
+    ],
+    emboss: [
+       -2, -1,  0,
+       -1,  1,  1,
+        0,  1,  2
+    ]
+  };
+
+  // List of effects to apply.
+  var effectsToApply = [
+    "gaussianBlur",
+    "emboss",
+    "gaussianBlur",
+    "unsharpen"
+  ];
+</pre></div>
+
+<p>And finally let's apply each one, ping ponging which texture we are rendering too</p>
+
+<div class="highlight"><pre lang="">  function drawEffects() {
+    // Tell it to use our program (pair of shaders)
+    gl.useProgram(program);
+
+<pre><code>// Bind the attribute/buffer set we want.
+gl.bindVertexArray(vao);
+
+// start with the original image on unit 0
+gl.activeTexture(gl.TEXTURE0 + 0);
+gl.bindTexture(gl.TEXTURE_2D, originalImageTexture);
+
+// Tell the shader to get the texture from texture unit 0
+gl.uniform1i(imageLocation, 0);
+
+// don't y flip images while drawing to the textures
+gl.uniform1f(flipYLocation, 1);
+
+// loop through each effect we want to apply.
+var count = 0;
+for (var ii = 0; ii &lt; tbody.rows.length; ++ii) {
+  var checkbox = tbody.rows[ii].firstChild.firstChild;
+  if (checkbox.checked) {
+    // Setup to draw into one of the framebuffers.
+    setFramebuffer(framebuffers[count % 2], image.width, image.height);
+
+    drawWithKernel(checkbox.value);
+
+    // for the next draw, use the texture we just rendered to.
+    gl.bindTexture(gl.TEXTURE_2D, textures[count % 2]);
+
+    // increment count so we use the other texture next time.
+    ++count;
+  }
+}
+
+// finally draw the result to the canvas.
+gl.uniform1f(flipYLocation, -1);  // need to y flip for canvas
+
+setFramebuffer(null, gl.canvas.width, gl.canvas.height);
+
+drawWithKernel("normal");
+</code></pre>
+
+  }
+
+  function setFramebuffer(fbo, width, height) {
+    // make this the framebuffer we are rendering to.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+<pre><code>// Tell the shader the resolution of the framebuffer.
+gl.uniform2f(resolutionLocation, width, height);
+
+// Tell WebGL how to convert from clip space to pixels
+gl.viewport(0, 0, width, height);
+</code></pre>
+
+  }
+
+  function drawWithKernel(name) {
+    // set the kernel and it's weight
+    gl.uniform1fv(kernelLocation, kernels[name]);
+    gl.uniform1f(kernelWeightLocation, computeKernelWeight(kernels[name]));
+
+<pre><code>// Draw the rectangle.
+var primitiveType = gl.TRIANGLES;
+var offset = 0;
+var count = 6;
+gl.drawArrays(primitiveType, offset, count);
+</code></pre>
+
+  }
+</pre></div>
+
+<p>Here's a working version with a slightly more flexible UI. Check the effects<br />to turn them on. Drag the effects to reorder how they are applied.</p>
+
+<p>{{{example url="../webgl-2d-image-processing.html" }}}</p>
+
+<p>Some things I should go over.</p>
+
+<p>Calling <code>gl.bindFramebuffer</code> with <code>null</code> tells WebGL you want to render<br />to the canvas instead of to one of your framebuffers.</p>
+
+<p>Also framebuffers may or may not work depending on which attachments you<br />put on them. There's a list of which types and combinations of attachments<br />are supposed to always work. The one used here, one <code>RGBA</code>/<code>UNSIGNED_BYTE</code> texture<br />assigned to the <code>COLOR_ATTACHMENT0</code> attachment point, is always supposed to work.<br />More exotic texture formats and or combinations of attachments might not work.<br />In that case you're supposed to bind the framebuffer and then call<br /><code>gl.checkFramebufferStatus</code> and see if it returns <code>gl.FRAMEBUFFER_COMPLETE</code>.<br />If it does you're good to go. If not you'll need to tell the user to fallback<br />to something else. Fortunately WebGL2 supports many formats and combinations.</p>
+
+<p>WebGL has to convert from <a href="webgl-fundamentals.html">clip space</a> back into pixels.<br />It does this based on the settings of <code>gl.viewport</code>. Since the framebuffers<br />we are rendering into are a different size than the canvas we need to set the<br />viewport appropriately depending if we are rendering to a texture or the canvas.</p>
+
+<p>Finally in the <a href="webgl-fundamentals.html">original example</a> we flipped the Y<br />coordinate when rendering because WebGL displays the canvas with 0,0 being the<br />bottom left corner instead of the more traditional for 2D top left. That's not<br />needed when rendering to a framebuffer. Because the framebuffer is never<br />displayed, which part is top and bottom is irrelevant. All that matters is<br />that pixel 0,0 in the framebuffer corresponds to 0,0 in our calculations.<br />To deal with this I made it possible to set whether to flip or not by<br />adding one more uniform input into the shader call <code>u_flipY</code>.</p>
+
+<div class="highlight"><pre lang="">...
++uniform float u_flipY;
+...
+
+void main() {
+  ...
++   gl_Position = vec4(clipSpace * vec2(1, u_flipY), 0, 1);
+  ...
+}
+</pre></div>
+
+<p>And then we can set it when we render with</p>
+
+<p><div class="highlight"><pre lang="">  ...<br />+  var flipYLocation = gl.getUniformLocation(program, "u_flipY");</p>
+
+<p>...</p>
+
+<ul>
+<li>// don't flip</li>
+<li><p>gl.uniform1f(flipYLocation, 1);</p>
+
+<p>...</p></li>
+<li><p>// flip</p></li>
+<li>gl.uniform1f(flipYLocation, -1);
+</pre></div></li>
+</ul>
+
+<p>I kept this example simple by using a single GLSL program that can achieve<br />multiple effects. If you wanted to do full on image processing you'd probably<br />need many GLSL programs. A program for hue, saturation and luminance adjustment.<br />Another for brightness and contrast. One for inverting, another for adjusting<br />levels, etc. You'd need to change the code to switch GLSL programs and update<br />the parameters for that particular program. I'd considered writing that example<br />but it's an exercise best left to the reader because multiple GLSL programs each<br />with their own parameter needs probably means some major refactoring to keep it<br />all from becoming a big mess of spaghetti.</p>
+
+<p>I hope this and the preceding examples have made WebGL seem a little more<br />approachable and I hope starting with 2D helps make WebGL a little easier to<br />understand. If I find the time I'll try to write <a href="webgl-2d-translation.html">a few more articles</a><br />about how to do 3D as well as more details on <a href="webgl-how-it-works.html">what WebGL is really doing under the hood</a>.<br />For a next step consider learning <a href="webgl-2-textures.html">how to use 2 or more textures</a>.</p>

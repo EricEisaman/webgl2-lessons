@@ -1,0 +1,295 @@
+<p>Title: WebG2L Smallest Programs<br />Description: Smallest Code for Testing<br />TOC: Smallest Programs</p>
+
+<p>This article assumes you've read many of the other articles<br />starting with <a href="webgl-fundamentals.html">the fundamentals</a>.<br />If you have not read them please start there first.</p>
+
+<p>I don't really know what to file this article under because it has two<br />purposes.</p>
+
+<ol>
+<li><p>Show you the smallest WebGL programs.</p>
+
+<p>These techniques are super useful for testing something or<br />when making an <a href="https://meta.stackoverflow.com/a/349790/128511">MCVE for Stack Overflow</a> or when trying to narrow<br />down a bug.</p></li>
+<li><p>Learning to think outside the box</p>
+
+<p>I hope to write several more articles on this<br />to help you see the bigger picture rather than just the common patterns.<br /><a href="webgl-drawing-without-data.html">Here's one</a>.</p></li>
+</ol>
+
+<h2>Just clearing</h2>
+
+<p>Here's the smallest WebGL program that actually does something</p>
+
+<pre><code>
+const gl = document.querySelector('canvas').getContext('webgl2');
+gl.clearColor(1, 0, 0, 1);  // red
+gl.clear(gl.COLOR_BUFFER_BIT);
+</code></pre>
+
+<p>All this program does is clear the canvas to red but it did actually do something.</p>
+
+<p>Think about it through. With just this you can actually test some things. Let's say<br />you are <a href="webgl-render-to-texture.html">rendering to a texture</a> but things aren't working.<br />Let's say it's just like the example in <a href="webgl-render-to-texture.html">that article</a>.<br />You're rendering 1 or more 3D things into a texture then rending that result onto a cube.</p>
+
+<p>You're not seeing anything. Well, as a simple test, stop rendering to the texture with<br />shaders are just clear the texture to a known color.</p>
+
+<pre><code>
+gl.bindFramebuffer(gl.FRAMEBUFFER, framebufferWithTexture)
+gl.clearColor(1, 0, 1, 1);  // magenta
+gl.clear(gl.COLOR_BUFFER_BIT);
+</code></pre>
+
+<p>Now render with the texture from the framebuffer. Does your cube turn magenta? If not<br />then your issue is not the rendering to the texture part it's something else.</p>
+
+<h2>Using the <code>SCISSOR_TEST</code> and <code>gl.clear</code></h2>
+
+<p>The <code>SCISSOR_TEST</code> clips both drawing and clearing to some sub rectangle of the canvas (or current framebuffer).</p>
+
+<p>You enable the scissor test with</p>
+
+<pre><code>
+gl.enable(gl.SCISSOR_TEST);
+</code></pre>
+
+<p>and then you set the scissor rectangle in pixels relative to the bottom right corner. It uses the same parameters<br />as <code>gl.viewport</code>.</p>
+
+<pre><code>
+gl.scissor(x, y, width, height);
+</code></pre>
+
+<p>Using that can draw rectangles using the <code>SCISSOR_TEST</code> and <code>gl.clear</code>.</p>
+
+<p>Example</p>
+
+<pre><code>
+const gl = document.querySelector('#c').getContext('webgl2');
+
+gl.enable(gl.SCISSOR_TEST);
+
+function drawRect(x, y, width, height, color) {
+  gl.scissor(x, y, width, height);
+  gl.clearColor(...color);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+}
+
+for (let i = 0; i < 100; ++i) {
+  const x = rand(0, 300);
+  const y = rand(0, 150);
+  const width = rand(0, 300 - x);
+  const height = rand(0, 150 - y);
+  drawRect(x, y, width, height, [rand(1), rand(1), rand(1), 1]);
+}
+
+
+function rand(min, max) {
+  if (max === undefined) {
+    max = min;
+    min = 0;
+  }
+  return Math.random() * (max - min) + min;
+}
+</code></pre>
+
+<p>{{{example url="../webgl-simple-scissor.html"}}}</p>
+
+<p>Not saying that particular one is all that useful but still<br />it's good to know.</p>
+
+<h2>Using one large <code>gl.POINTS</code></h2>
+
+<p>As most of the examples show, the most common thing to do in WebGL<br />is create buffers. Put vertex data in those buffers. Create<br />shaders with attributes. Set up the attributes to pull data from<br />those buffers. Then draw, possibly with uniforms and texture also<br />used by your shaders.</p>
+
+<p>But sometimes you just want to test. Let's say you want just see<br />something draw.</p>
+
+<p>How about this set of shaders</p>
+
+<pre><code>
+#version 300 es
+// vertex shader
+void main() {
+  gl_Position = vec4(0, 0, 0, 1);  // center
+  gl_PointSize = 120.0;
+}
+</code></pre>
+
+<pre><code>
+#version 300 es
+// fragment shader
+precision highp float;
+
+out vec4 outColor;
+
+void main() {
+  outColor = vec4(1, 0, 0, 1);  // red
+}
+</code></pre>
+
+<p>And here's the code to use it</p>
+
+<pre><code>
+// setup GLSL program
+const program = webglUtils.createProgramFromSources(gl, [vs, fs]);
+
+gl.useProgram(program);
+
+const offset = 0;
+const count = 1;
+gl.drawArrays(gl.POINTS, offset, count);
+</code></pre>
+
+<p>No buffers to create, no uniforms to setup, and we get a single<br />point in the middle of the canvas.</p>
+
+<p>{{{example url="../webgl-simple-point.html"}}}</p>
+
+<p>About <code>gl.POINTS</code>: When you pass <code>gl.POINTS</code> to <code>gl.drawArrays</code> you're also<br />required to set <code>gl_PointSize</code> in your vertex shader to a size in pixels. It's<br />important to note that different GPU/Drivers have a different maximum point size<br />you can use. You can query that maximum size with</p>
+
+<div class="highlight"><pre lang="">const [minSize, maxSize] = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
+</pre></div>
+
+<p>The WebGL spec only requires a max size of 1.0. Fortunately<br /><a href="https://webglstats.com/webgl/parameter/ALIASED_POINT_SIZE_RANGE">most if not all GPUs and drivers support a larger size</a>.</p>
+
+<p>After you set <code>gl_PointSize</code> then when the vertex shader exits, whatever value you set on <code>gl_Position</code> is converted<br />to screen/canvas space in pixels, then a square is generated around that position that is +/- gl_PointSize / 2 in all 4 directions.</p>
+
+<p>Okay, I can hear you thinking so what, who wants to draw a single point.</p>
+
+<p>Well, points automatically get free <a href="webgl-3d-textures.html">texture coordinates</a>. They are available in the fragment<br />shader with the special variable <code>gl_PointCoord</code>. So, let's draw a texture on that point.</p>
+
+<p>First let's change the fragment shader.</p>
+
+<pre><code>
+#version 300 es
+// fragment shader
+precision highp float;
+
++uniform sampler tex;
+
+out vec4 outColor;
+
+void main() {
+-  outColor = vec4(1, 0, 0, 1);  // red
++  outColor = texture(tex, gl_PointCoord.xy);
+}
+</code></pre>
+
+<p>Now to keep it simple let's make a texture with raw data like we covered in<br /><a href="webgl-data-textures.html">the article on data textures</a>.</p>
+
+<pre><code>
+// 2x2 pixel data
+const pixels = new Uint8Array([
+  0xFF, 0x00, 0x00, 0xFF,  // red
+  0x00, 0xFF, 0x00, 0xFF,  // green
+  0x00, 0x00, 0xFF, 0xFF,  // blue
+  0xFF, 0x00, 0xFF, 0xFF,  // magenta
+]);
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,                 // level
+    gl.RGBA,           // internal format
+    2,                 // width
+    2,                 // height
+    0,                 // border
+    gl.RGBA,           // format
+    gl.UNSIGNED_BYTE,  // type
+    pixels,            // data
+);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+</code></pre>
+
+<p>Because WebGL defaults to using texture unit 0 and because uniforms<br />default to 0 there is nothing else to setup</p>
+
+<p>{{{example url="../webgl-simple-point-w-texture.html"}}}</p>
+
+<p>This can be a great way to test texture related problems.<br />We're still using no buffers, no attributes, and we didn't have<br />to look up and set any uniforms. For example if we loaded an image,<br />it's not showing up. What if we try the shader above, does it<br />show the image on the point? We rendered to a texture and then<br />we want to view the texture. Normally we'd setup some geometry<br />via buffers and attributes but we can render the texture just<br />by showing it on this single point.</p>
+
+<h2>Using Multiple Single <code>POINTS</code></h2>
+
+<p>Another simple change to the example above. We can change the vertex<br />shader to this</p>
+
+<pre><code>
+#version 300 es
+// vertex shader
+
++in vec4 position;
+
+void main() {
+-  gl_Position = vec4(0, 0, 0, 1);
++  gl_Position = position;
+  gl_PointSize = 120.0;
+}
+</code></pre>
+
+<p>attributes have a default value of <code>0, 0, 0, 1</code> so with just that<br />change the examples above would still continue to work. But, now<br />we gain the ability to set the position if we want.</p>
+
+<pre><code>
++const program = webglUtils.createProgramFromSources(gl, [vs, fs]);
+const positionLoc = gl.getAttribLocation(program, 'position');
+
+...
+
++const numPoints = 5;
++for (let i = 0; i < numPoints; ++i) {
++  const u = i / (numPoints - 1);    // 0 to 1
++  const clipspace = u * 1.6 - 0.8;  // -0.8 to +0.8
++  gl.vertexAttrib2f(positionLoc, clipspace, clipspace);
+
+*  const offset = 0;
+*  const count = 1;
+*  gl.drawArrays(gl.POINTS, offset, count);
++}
+</code></pre>
+
+<p>Before we run it lets make the point smaller</p>
+
+<pre><code>
+// vertex shader
+
+in vec4 position;
+
+void main() {
+  gl_Position = position;
+-  gl_PointSize = 120.0;
++  gl_PointSize = 20.0;
+}
+</code></pre>
+
+<p>And lets make it so we can set the color of the point.<br />(note: I switched back to the code without a texture).</p>
+
+<pre><code>
+precision highp float;
+
++uniform vec4 color;
+
+out vec4 outColor;
+
+void main() {
+-  outColor = vec4(1, 0, 0, 1);   // red
++  outColor = color;
+}
+</code></pre>
+
+<p>and we need to lookup the color location</p>
+
+<pre><code>
+// setup GLSL program
+const program = webglUtils.createProgramFromSources(gl, [vs, fs]);
+const positionLoc = gl.getAttribLocation(program, 'position');
++const colorLoc = gl.getUniformLocation(program, 'color');
+</code></pre>
+
+<p>And use them</p>
+
+<p><div class="highlight"><pre lang="">gl.useProgram(program);</p>
+
+<p>const numPoints = 5;<br />for (let i = 0; i &lt; numPoints; ++i) {<br />  const u = i / (numPoints - 1);    // 0 to 1<br />  const clipspace = u * 1.6 - 0.8;  // -0.8 to +0.8<br />  gl.vertexAttrib2f(positionLoc, clipspace, clipspace);</p>
+
+<ul>
+<li><p>gl.uniform4f(colorLoc, u, 0, 1 - u, 1);</p>
+
+<p>const offset = 0;<br />const count = 1;<br />gl.drawArrays(gl.POINTS, offset, count);<br />}<br /></pre></div></p></li>
+</ul>
+
+<p>And now we get 5 points with 5 colors<br />and we still didn't have to setup any buffers or<br />attributes.</p>
+
+<p>{{{example url="../webgl-simple-points.html"}}}</p>
+
+<p>Of course this is <strong>NOT</strong> the way you should<br />draw lots of points in WebGL. If you want to draw lots<br />of points you should do something like setup an attribute with a position<br />for each point, and a color for each point and draw all the points<br />in a single draw call.</p>
+
+<p>BUT!, for testing, for debugging, for making an <a href="https://meta.stackoverflow.com/a/349790/128511">MCVE</a> it's a great way to <strong>minimize</strong><br />the code. As another example let's say we're drawing to textures for a post processing<br />affect and we want to visualize them. We could just draw one large<br />point for each one using the combination of this example and<br />the previous one with a texture. No complicated step of buffers<br />and attributes needed, great for debugging.</p>

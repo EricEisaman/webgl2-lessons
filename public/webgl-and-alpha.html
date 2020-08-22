@@ -1,0 +1,99 @@
+<p>Title: WebGL and Alpha<br />Description: How alpha in WebGL is different than alpha in OpenGL<br />TOC: WebGL2 and Alpha</p>
+
+<p>I've noticed some OpenGL developers having issues with how WebGL<br />treats alpha in the backbuffer (ie, the canvas), so I thought it<br />might be good to go over some of the differences between WebGL<br />and OpenGL related to alpha.</p>
+
+<p>The biggest difference between OpenGL and WebGL is that OpenGL<br />renders to a backbuffer that is not composited with anything,<br />or effectively not composited with anything by the OS's window<br />manager, so it doesn't matter what your alpha is.</p>
+
+<p>WebGL is composited by the browser with the web page and the<br />default is to use pre-multiplied alpha the same as .png <code>&lt;img&gt;</code><br />tags with transparency and 2D canvas tags.</p>
+
+<p>WebGL has several ways to make this more like OpenGL.</p>
+
+<h3>#1) Tell WebGL you want it composited with non-premultiplied alpha</h3>
+
+<pre><code>gl = canvas.getContext("webgl2", {
+  premultipliedAlpha: false  // Ask for non-premultiplied alpha
+});
+</code></pre>
+
+<p>The default is true.</p>
+
+<p>Of course the result will still be composited over the page with whatever<br />background color ends up being under the canvas (the canvas's background<br />color, the canvas's container background color, the page's background<br />color, the stuff behind the canvas if the canvas has a z-index > 0, etc....)<br />in other words, the color CSS defines for that area of the webpage.</p>
+
+<p>A really good way to find if you have any alpha problems is to set the<br />canvas's background to a bright color like red. You'll immediately see<br />what is happening.</p>
+
+<pre><code>&lt;canvas style="background: red;"&gt;&lt;canvas&gt;
+</code></pre>
+
+<p>You could also set it to black which will hide any alpha issues you have.</p>
+
+<h3>#2) Tell WebGL you don't want alpha in the backbuffer</h3>
+
+<pre><code>gl = canvas.getContext("webgl", { alpha: false }};
+</code></pre>
+
+<p>This will make it act more like OpenGL since the backbuffer will only have<br />RGB. This is probably the best option because a good browser could see that<br />you have no alpha and actually optimize the way WebGL is composited. Of course<br />that also means it actually won't have alpha in the backbuffer so if you are<br />using alpha in the backbuffer for some purpose that might not work for you.<br />Few apps that I know of use alpha in the backbuffer. I think arguably this<br />should have been the default.</p>
+
+<h3>#3) Clear alpha at the end of your rendering</h3>
+
+<pre><code>..
+renderScene();
+..
+// Set the backbuffer's alpha to 1.0 by
+
+// Setting the clear color to 1
+gl.clearColor(1, 1, 1, 1);
+
+// Telling WebGL to only affect the alpha channel
+gl.colorMask(false, false, false, true);
+
+// clear
+gl.clear(gl.COLOR_BUFFER_BIT);
+</code></pre>
+
+<p>Clearing is generally very fast as there is a special case for it in most<br />hardware. I did this in many of my first WebGL demos. If I was smart I'd switch to<br />method #2 above. Maybe I'll do that right after I post this. It seems like<br />most WebGL libraries should default to this method. Those few developers<br />that are actually using alpha for compositing effects can ask for it. The<br />rest will just get the best perf and the least surprises.</p>
+
+<h3>#4) Clear the alpha once then don't render to it anymore</h3>
+
+<pre><code>// At init time. Clear the back buffer.
+gl.clearColor(1,1,1,1);
+gl.clear(gl.COLOR_BUFFER_BIT);
+
+// Turn off rendering to alpha
+gl.colorMask(true, true, true, false);
+</code></pre>
+
+<p>Of course if you are rendering to your own framebuffers you may need to turn<br />rendering to alpha back on and then turn it off again when you switch to<br />rendering to the canvas.</p>
+
+<h3>#5) Handling Images</h3>
+
+<p>By default if you are loading images with alpha into WebGL, WebGL will<br />provide the values as they are in the file with color values not<br />premultiplied. This is generally what I'm used to for OpenGL programs<br />because it's lossless whereas pre-multiplied is lossy.</p>
+
+<pre><code>1, 0.5, 0.5, 0  // RGBA
+</code></pre>
+
+<p>Is a possible un-premultiplied value whereas pre-multiplied it's an<br />impossible value because <code>a = 0</code> which means <code>r</code>, <code>g</code>, and <code>b</code> have<br />to be zero.</p>
+
+<p>When loading an image you can have WebGL pre-multiply the alpha if you want.<br />You do this by setting <code>UNPACK_PREMULTIPLY_ALPHA_WEBGL</code> to true like this</p>
+
+<pre><code>gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+</code></pre>
+
+<p>The default is un-premultiplied.</p>
+
+<p>Be aware that most if not all Canvas 2D implementations work with<br />pre-multiplied alpha. That means when you transfer them to WebGL and<br /><code>UNPACK_PREMULTIPLY_ALPHA_WEBGL</code> is false WebGL will convert them<br />back to un-premultipiled.</p>
+
+<h3>#6) Using a blending equation that works with pre-multiplied alpha.</h3>
+
+<p>Almost all OpenGL apps I've writing or worked on use</p>
+
+<pre><code>gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+</code></pre>
+
+<p>That works for non pre-multiplied alpha textures.</p>
+
+<p>If you actually want to work with pre-multiplied alpha textures then you<br />probably want</p>
+
+<pre><code>gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+</code></pre>
+
+<p>Those are the methods I'm aware of. If you know of more please post them below.</p>
